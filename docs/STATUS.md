@@ -6,6 +6,8 @@
 
 F0 状态：文档基线已完成（仅本地；业务实现未开始）
 
+开发路线：已在 `docs/development-plan.md` 固化提供商 ADR、Standalone、Official/Core、Community 发布和双模式验收顺序。
+
 已确定：Java 64×64 范围、Steve/Alex、最多三次候选、确认后自动发布、Official/Standalone、远程适配器策略和保留期限。
 
 下一步：F3 前执行生成提供商基准，形成厂商 ADR；在 Core 与 Community 的预发布契约可用后初始化 Next.js/NestJS 工程。
