@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { SkinPreview } from './skin-preview';
+
 type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 interface ConversationInfo {
@@ -17,6 +19,7 @@ interface RenderEntry {
   status: JobStatus;
   candidateId: string | null;
   errorCode: string | null;
+  armModel: 'steve' | 'alex';
 }
 
 function newIdempotencyKey(): string {
@@ -37,14 +40,15 @@ async function postJson(
   return { ok: response.ok, status: response.status, data };
 }
 
-/** Standalone 最小创作流程：创建 → 渲染（最多三次）→ 轮询 → 确认成品。
- * 候选预览与最终下载依赖公共契约补全（缺口已记录），当前明确禁用。 */
+/** Standalone 最小创作流程：创建 → 渲染（最多三次）→ 在线预览 → 确认成品。
+ * 预览通过本地演示路由（demo-preview）提供；最终下载仍待公共契约补全。 */
 export function CreationFlow() {
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
   const [initialInput, setInitialInput] = useState('');
   const [renderInput, setRenderInput] = useState('');
   const [armModel, setArmModel] = useState<'steve' | 'alex'>('steve');
   const [renders, setRenders] = useState<RenderEntry[]>([]);
+  const [previewBytes, setPreviewBytes] = useState<Record<string, Uint8Array>>({});
   const [finalizeJobId, setFinalizeJobId] = useState<string | null>(null);
   const [finalizeStatus, setFinalizeStatus] = useState<JobStatus | null>(null);
   const [title, setTitle] = useState('');
@@ -93,17 +97,25 @@ export function CreationFlow() {
     [],
   );
 
-  const updateConversation = useCallback(async (): Promise<void> => {
-    if (!conversation) {
-      return;
-    }
-    // 契约 0.1.0-draft 暂无会话详情端点；渲染响应与本会话轮询已覆盖最小流程所需状态
-    setConversation((prev) =>
-      prev
-        ? { ...prev, attempts_used: renders.filter((entry) => entry.status !== 'failed').length }
-        : prev,
-    );
-  }, [conversation, renders]);
+  const loadPreview = useCallback(
+    async (candidateId: string, model: 'steve' | 'alex') => {
+      if (previewBytes[candidateId]) {
+        return;
+      }
+      try {
+        const response = await fetch(`/demo-preview/${candidateId}`);
+        if (!response.ok) {
+          return;
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        setPreviewBytes((prev) => ({ ...prev, [candidateId]: bytes }));
+        void model;
+      } catch {
+        // 预览失败不影响主流程
+      }
+    },
+    [previewBytes],
+  );
 
   const startConversation = useCallback(async (): Promise<void> => {
     if (initialInput.trim().length === 0) {
@@ -149,7 +161,7 @@ export function CreationFlow() {
     const accepted = result.data as { job_id: string };
     setRenders((prev) => [
       ...prev,
-      { jobId: accepted.job_id, status: 'queued', candidateId: null, errorCode: null },
+      { jobId: accepted.job_id, status: 'queued', candidateId: null, errorCode: null, armModel },
     ]);
     void pollJob(accepted.job_id, (status, candidateId, errorCode) => {
       setRenders((prev) =>
@@ -157,8 +169,11 @@ export function CreationFlow() {
           entry.jobId === accepted.job_id ? { ...entry, status, candidateId, errorCode } : entry,
         ),
       );
+      if (status === 'succeeded' && candidateId) {
+        void loadPreview(candidateId, armModel);
+      }
     });
-  }, [conversation, renderInput, armModel, pollJob]);
+  }, [conversation, renderInput, armModel, pollJob, loadPreview]);
 
   const finalize = useCallback(
     async (candidateId: string): Promise<void> => {
@@ -187,8 +202,11 @@ export function CreationFlow() {
   );
 
   const candidates = renders
-    .map((entry) => entry.candidateId)
-    .filter((candidateId): candidateId is string => candidateId !== null);
+    .map((entry) => ({ candidateId: entry.candidateId, armModel: entry.armModel }))
+    .filter(
+      (entry): entry is { candidateId: string; armModel: 'steve' | 'alex' } =>
+        entry.candidateId !== null,
+    );
 
   return (
     <div className="flow">
@@ -251,33 +269,32 @@ export function CreationFlow() {
                 </li>
               ))}
             </ul>
-            {renders.length > 0 && (
-              <button type="button" onClick={() => void updateConversation()}>
-                刷新次数
-              </button>
-            )}
           </section>
 
           {candidates.length > 0 && (
             <section className="card">
-              <h2>候选与确认</h2>
-              <p className="muted">
-                候选预览与最终下载依赖公共契约补全（已记录缺口，待 Contracts 工作流），
-                当前仅支持按候选 ID 确认成品。
-              </p>
-              <ul data-testid="candidate-list">
-                {candidates.map((candidateId) => (
-                  <li key={candidateId}>
-                    <button
-                      type="button"
-                      data-testid={`confirm-${candidateId.slice(0, 8)}`}
-                      disabled={busy || finalizeJobId !== null}
-                      onClick={() => void finalize(candidateId)}
-                    >
-                      确认成品 {candidateId.slice(0, 8)}…
-                    </button>
-                  </li>
-                ))}
+              <h2>候选预览与确认</h2>
+              <ul data-testid="candidate-list" className="candidate-list">
+                {candidates.map((candidate) => {
+                  const bytes = previewBytes[candidate.candidateId];
+                  return (
+                    <li key={candidate.candidateId} className="candidate-item">
+                      {bytes ? (
+                        <SkinPreview bytes={bytes} armModel={candidate.armModel} scale={6} />
+                      ) : (
+                        <div className="preview-loading">预览加载中…</div>
+                      )}
+                      <button
+                        type="button"
+                        data-testid={`confirm-${candidate.candidateId.slice(0, 8)}`}
+                        disabled={busy || finalizeJobId !== null}
+                        onClick={() => void finalize(candidate.candidateId)}
+                      >
+                        确认成品 {candidate.candidateId.slice(0, 8)}…
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
               <label>
                 标题：
@@ -297,6 +314,9 @@ export function CreationFlow() {
                   maxLength={4000}
                 />
               </label>
+              <p className="muted">
+                最终 PNG 下载依赖公共契约补全（缺口已记录，待 Contracts 工作流）。
+              </p>
             </section>
           )}
 

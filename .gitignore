@@ -14,3 +14,5 @@ data/
 # Prisma 生成的客户端（构建与 typecheck 前会自动 prisma generate）
 apps/api/src/generated/
 packages/db/src/generated/
+# 【仅本地演示】候选预览路由（项目所有者授权的本地演示工具，非公共 API、不入库）
+apps/web/src/app/demo-preview/

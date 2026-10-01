@@ -4,7 +4,12 @@ import pino, { type Logger } from 'pino';
 import { loadWorkerConfig } from '@mc-plan/skin-config';
 import { SystemClock, FileSystemObjectStorage } from '@mc-plan/skin-core';
 import { createPrismaClient } from '@mc-plan/skin-db';
-import { FakeProvider } from '@mc-plan/skin-provider-sdk';
+import {
+  FakeProvider,
+  LlmStructuredSkinProvider,
+  OpenAiCompatLlmClient,
+  type ProviderAdapter,
+} from '@mc-plan/skin-provider-sdk';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
 
 import {
@@ -21,7 +26,14 @@ const logger: Logger = pino({
   level: config.logLevel,
   base: { service: 'skin-worker', environment: config.env, run_mode: config.runMode },
   redact: {
-    paths: ['SKIN_DATABASE_URL', 'SKIN_REDIS_URL', 'password'],
+    paths: [
+      'SKIN_DATABASE_URL',
+      'SKIN_REDIS_URL',
+      'password',
+      'llm.apiKey',
+      'llmBaseUrl',
+      'llmApiKey',
+    ],
     censor: '[REDACTED]',
   },
   messageKey: 'event',
@@ -31,13 +43,33 @@ const db = createPrismaClient(config.databaseUrl);
 const storage = new FileSystemObjectStorage(config.candidateStorageRoot);
 const clock = new SystemClock();
 
-// Fake Provider 仅在开发/测试环境可用（ADR-0009：生产模式禁止实例化）；
-// 正式厂商适配器在基准 ADR（Q-001）决定后接入同一接口。
-const provider = new FakeProvider({
-  environment: config.env,
-  resolveFixture: async (request) =>
-    loadFixtureBytes(request.armModel === 'alex' ? 'valid-alex' : 'valid-steve'),
-});
+function createProvider(): ProviderAdapter {
+  if (config.provider === 'llm' && config.llm) {
+    logger.info({
+      event: 'provider_selected',
+      result: 'success',
+      provider: 'llm-structured',
+      llm_model: config.llm.model,
+    });
+    return new LlmStructuredSkinProvider({
+      environment: config.env,
+      client: new OpenAiCompatLlmClient({
+        baseUrl: config.llm.baseUrl,
+        apiKey: config.llm.apiKey,
+        model: config.llm.model,
+      }),
+    });
+  }
+  // Fake Provider 仅在开发/测试环境可用（ADR-0009：生产模式禁止实例化）；
+  // 正式厂商适配器在基准 ADR（Q-001）决定后接入同一接口。
+  return new FakeProvider({
+    environment: config.env,
+    resolveFixture: async (request) =>
+      loadFixtureBytes(request.armModel === 'alex' ? 'valid-alex' : 'valid-steve'),
+  });
+}
+
+const provider = createProvider();
 
 const ctx: WorkerContext = {
   db,
@@ -67,6 +99,7 @@ logger.info({
   event: 'worker_starting',
   result: 'success',
   queues: ['skin-render', 'skin-finalize', 'skin-retention-cleanup'],
+  provider: config.provider,
   retry: { attempts: 3, backoff: 'exponential(2000ms)' },
   retention: {
     conversation_days: config.conversationRetentionDays,

@@ -277,10 +277,25 @@ importers:
       '@mc-plan/skin-core':
         specifier: workspace:*
         version: link:../skin-core
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
+      '@mc-plan/skin-test-fixtures':
+        specifier: workspace:*
+        version: link:../test-fixtures
+      '@mc-plan/skin-validator':
+        specifier: workspace:*
+        version: link:../skin-validator
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -3150,6 +3165,10 @@ packages:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
 
+  source-map-js@1.2.2:
+    resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
+    engines: {node: '>=0.10.0'}
+
   split-ca@1.0.1:
     resolution: {integrity: sha512-Q5thBSxp5t8WPTTJQS59LrGqOZqOsrhDGDVm8azCqIBjSBd7nd9o2PM+mDulQQkh8h//4U6hFZnc/mul8t5pWQ==}
 
@@ -5936,7 +5955,7 @@ snapshots:
     dependencies:
       nanoid: 3.3.19
       picocolors: 1.1.1
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
 
@@ -6267,6 +6286,8 @@ snapshots:
       atomic-sleep: 1.0.0
 
   source-map-js@1.2.1: {}
+
+  source-map-js@1.2.2: {}
 
   split-ca@1.0.1: {}
 

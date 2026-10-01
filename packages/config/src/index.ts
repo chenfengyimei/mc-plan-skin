@@ -88,8 +88,12 @@ export const apiConfigSchema = baseConfigSchema
   })
   .superRefine(requireOfficialCoreUrl);
 
+export const WORKER_PROVIDERS = ['fake', 'llm'] as const;
+export type WorkerProvider = (typeof WORKER_PROVIDERS)[number];
+
 export const workerConfigSchema = baseConfigSchema
   .extend({
+    SKIN_PROVIDER: z.enum(WORKER_PROVIDERS).default('fake'),
     SKIN_DATABASE_URL: z
       .string()
       .min(1)
@@ -103,8 +107,25 @@ export const workerConfigSchema = baseConfigSchema
         message: '必须是 redis:// 或 rediss:// 连接串',
       }),
     SKIN_CANDIDATE_STORAGE_ROOT: z.string().min(1).default('./data/candidates'),
+    SKIN_LLM_BASE_URL: z.string().optional(),
+    SKIN_LLM_API_KEY: z.string().optional(),
+    SKIN_LLM_MODEL: z.string().optional(),
   })
-  .superRefine(requireOfficialCoreUrl);
+  .superRefine((value, ctx) => {
+    requireOfficialCoreUrl(value, ctx);
+    if (value.SKIN_PROVIDER === 'llm') {
+      const missing = (['SKIN_LLM_BASE_URL', 'SKIN_LLM_API_KEY', 'SKIN_LLM_MODEL'] as const).filter(
+        (field) => !value[field],
+      );
+      for (const field of missing) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `SKIN_PROVIDER=llm 需要 ${field}（LLM 连接配置；密钥不会进日志）`,
+        });
+      }
+    }
+  });
 
 export type ApiConfig = {
   runMode: RunMode;
@@ -132,6 +153,12 @@ export type WorkerConfig = {
   databaseUrl: string;
   redisUrl: string;
   candidateStorageRoot: string;
+  provider: WorkerProvider;
+  llm: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+  } | null;
 };
 
 function toIssues(error: z.ZodError): ReadonlyArray<{ field: string; message: string }> {
@@ -182,5 +209,14 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     databaseUrl: value.SKIN_DATABASE_URL,
     redisUrl: value.SKIN_REDIS_URL,
     candidateStorageRoot: value.SKIN_CANDIDATE_STORAGE_ROOT,
+    provider: value.SKIN_PROVIDER,
+    llm:
+      value.SKIN_PROVIDER === 'llm'
+        ? {
+            baseUrl: value.SKIN_LLM_BASE_URL ?? '',
+            apiKey: value.SKIN_LLM_API_KEY ?? '',
+            model: value.SKIN_LLM_MODEL ?? '',
+          }
+        : null,
   };
 }

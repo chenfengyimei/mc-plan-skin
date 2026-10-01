@@ -19,10 +19,15 @@
     "test:integration": "echo 'no integration tests' && exit 0"
   },
   "dependencies": {
-    "@mc-plan/skin-core": "workspace:*"
+    "@mc-plan/skin-core": "workspace:*",
+    "pngjs": "7.0.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
+    "@mc-plan/skin-test-fixtures": "workspace:*",
+    "@mc-plan/skin-validator": "workspace:*",
     "@types/node": "26.6.3",
+    "@types/pngjs": "6.0.5",
     "typescript": "5.9.3",
     "vitest": "5.0.3"
   }

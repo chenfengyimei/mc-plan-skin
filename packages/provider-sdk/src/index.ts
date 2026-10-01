@@ -130,3 +130,7 @@ export class FakeProvider implements ProviderAdapter {
     };
   }
 }
+
+export * from './skin-design.js';
+export * from './llm-structured-provider.js';
+export * from './openai-compat-llm-client.js';
