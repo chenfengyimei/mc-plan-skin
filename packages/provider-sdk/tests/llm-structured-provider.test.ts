@@ -13,18 +13,26 @@ const request: ProviderGenerationRequest = {
 
 const goodDesignJson = JSON.stringify({
   palette: {
-    head: '#E0AC69',
-    head_overlay: '#CC3333',
-    torso: '#3B6EA5',
-    torso_overlay: null,
-    arm: '#E0AC69',
+    skin: '#E8B08A',
+    hair: '#5A4634',
+    head_overlay: '#5A4634',
+    shirt: '#3B6EA5',
+    shirt_overlay: null,
+    sleeve: '#3B6EA5',
     arm_overlay: null,
-    leg: '#2F3B52',
+    pants: '#4A5A6E',
     leg_overlay: null,
+    boots: '#6B4A2E',
+    scarf: '#C84B3C',
+    belt: '#5A4634',
     accent: '#F2D16B',
     eyes: '#2B4A8C',
+    eyebrows: '#5A4634',
   },
-  patterns: [{ part: 'torso', kind: 'stripe', color: '#F2F2F2' }],
+  hair: { style: 'with_bangs', fringe_rows: 2 },
+  face: { eye_style: 'round', mouth: true },
+  clothing: { scarf: true, belt: true, boots: true, sleeve_length: 'long' },
+  patterns: [{ part: 'torso', kind: 'border', color: '#2B4A6E' }],
 });
 
 function providerWith(content: string): LlmStructuredSkinProvider {
