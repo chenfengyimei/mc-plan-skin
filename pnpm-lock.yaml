@@ -126,9 +126,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@mc-plan/skin-core':
+        specifier: workspace:*
+        version: link:../../packages/skin-core
       next:
         specifier: 16.3.8
         version: 16.3.8(@playwright/test@1.63.0)(@types/node@26.6.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -136,9 +142,15 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@mc-plan/skin-test-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/test-fixtures
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
       '@types/react':
         specifier: 19.3.0
         version: 19.3.0
@@ -148,6 +160,9 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      vitest:
+        specifier: 5.0.3
+        version: 5.0.3(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   apps/worker:
     dependencies:

@@ -1,17 +1,18 @@
 import 'dotenv/config';
 import pino, { type Logger } from 'pino';
-import { Queue, Worker } from 'bullmq';
 
 import { loadWorkerConfig } from '@mc-plan/skin-config';
-import { SystemClock, QUEUE_NAMES } from '@mc-plan/skin-core';
+import { SystemClock, FileSystemObjectStorage } from '@mc-plan/skin-core';
 import { createPrismaClient } from '@mc-plan/skin-db';
 import { FakeProvider } from '@mc-plan/skin-provider-sdk';
-import { FileSystemObjectStorage } from '@mc-plan/skin-core';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
 
-import { processFinalizeJob } from './finalize.processor.js';
-import { processRenderJob } from './render.processor.js';
-import { runRetentionCleanup } from './retention.processor.js';
+import {
+  createFinalizeWorker,
+  createRenderWorker,
+  createRetentionQueue,
+  createRetentionWorker,
+} from './worker-factory.js';
 import type { WorkerContext } from './worker-context.js';
 
 const config = loadWorkerConfig(process.env);
@@ -49,26 +50,10 @@ const ctx: WorkerContext = {
 
 const connection = { url: config.redisUrl };
 
-const renderWorker = new Worker(QUEUE_NAMES.render, (job) => processRenderJob(ctx, job.data, job), {
-  connection,
-  concurrency: 2,
-  // 可重试的提供商错误（限流/超时等）由 BullMQ 指数退避重试
-  settings: {},
-});
-const finalizeWorker = new Worker(
-  QUEUE_NAMES.finalize,
-  (job) => processFinalizeJob(ctx, job.data),
-  { connection, concurrency: 2 },
-);
-
-const retentionQueue = new Queue(QUEUE_NAMES.retentionCleanup, { connection });
-const retentionWorker = new Worker(
-  QUEUE_NAMES.retentionCleanup,
-  async () => {
-    await runRetentionCleanup(ctx);
-  },
-  { connection, concurrency: 1 },
-);
+const renderWorker = createRenderWorker(ctx, connection);
+const finalizeWorker = createFinalizeWorker(ctx, connection);
+const retentionWorker = createRetentionWorker(ctx, connection);
+const retentionQueue = createRetentionQueue(connection);
 await retentionQueue.upsertJobScheduler(
   'retention-hourly',
   { every: 60 * 60 * 1000 },
@@ -81,7 +66,8 @@ await retentionQueue.upsertJobScheduler(
 logger.info({
   event: 'worker_starting',
   result: 'success',
-  queues: [QUEUE_NAMES.render, QUEUE_NAMES.finalize, QUEUE_NAMES.retentionCleanup],
+  queues: ['skin-render', 'skin-finalize', 'skin-retention-cleanup'],
+  retry: { attempts: 3, backoff: 'exponential(2000ms)' },
   retention: {
     conversation_days: config.conversationRetentionDays,
     candidate_hours: config.candidateRetentionHours,

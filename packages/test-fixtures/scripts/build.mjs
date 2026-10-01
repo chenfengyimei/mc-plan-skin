@@ -92,7 +92,8 @@ function baseRegions(armWidth) {
   ];
 }
 
-/** 第二层（overlay）区域：与 skin-validator 的 SECOND_LAYER_REGIONS 一致。 */
+/** 第二层（overlay）区域：与 skin-validator 的 SECOND_LAYER_REGIONS 一致，
+ *  并额外覆盖正面 overlay（帽子/外套/袖子/裤腿正面），供 2D 预览合成测试使用。 */
 function overlayRegions() {
   return [
     { x: 34, y: 2, w: 6, h: 6, color: PALETTE.hatOverlay },
@@ -100,6 +101,13 @@ function overlayRegions() {
     { x: 42, y: 34, w: 6, h: 6, color: PALETTE.sleeveOverlay },
     { x: 50, y: 50, w: 6, h: 6, color: PALETTE.sleeveOverlay },
     { x: 2, y: 50, w: 6, h: 6, color: PALETTE.pantsOverlay },
+    { x: 18, y: 50, w: 6, h: 6, color: PALETTE.pantsOverlay },
+    { x: 42, y: 10, w: 4, h: 4, color: PALETTE.hatOverlay },
+    { x: 22, y: 38, w: 4, h: 4, color: PALETTE.jacketOverlay },
+    { x: 44, y: 38, w: 3, h: 3, color: PALETTE.sleeveOverlay },
+    { x: 52, y: 54, w: 3, h: 3, color: PALETTE.sleeveOverlay },
+    { x: 4, y: 54, w: 3, h: 3, color: PALETTE.pantsOverlay },
+    { x: 20, y: 54, w: 3, h: 3, color: PALETTE.pantsOverlay },
   ];
 }
 

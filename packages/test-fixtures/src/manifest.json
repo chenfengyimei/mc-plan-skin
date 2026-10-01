@@ -13,8 +13,8 @@
     {
       "name": "invalid-corrupted",
       "file": "invalid-corrupted.png",
-      "sha256": "70a6d075548b8f6baae7fffb02a2cd6316fd7c70acd283998975127935791bc8",
-      "byteSize": 156,
+      "sha256": "75eb37603f8107d06aae53ba09117ca918d72578aa456f2dd3a983fd92543cbf",
+      "byteSize": 196,
       "expectValid": false,
       "armModel": "steve",
       "invalidCode": "DECODE_FAILED",
@@ -43,8 +43,8 @@
     {
       "name": "valid-alex",
       "file": "valid-alex-64x64.png",
-      "sha256": "e4d46406c62b226ef4bb38db45738240de9c9e2ae4350d7a039e23736d86e9d1",
-      "byteSize": 419,
+      "sha256": "d66e27da320e9e19eda1fd07ff24939d95d6e9fe8abdca2a6ad54c386ba4100c",
+      "byteSize": 517,
       "expectValid": true,
       "armModel": "alex",
       "secondLayer": true,
@@ -53,8 +53,8 @@
     {
       "name": "valid-steve",
       "file": "valid-steve-64x64.png",
-      "sha256": "cced1e328fe775df43443450e79d3c95d9c466825eeac46115de74e118331465",
-      "byteSize": 390,
+      "sha256": "451fdeb858549074789d84d73ac0c7e98ad1cff9cd0bce2f0d8339ecb48daf4a",
+      "byteSize": 491,
       "expectValid": true,
       "armModel": "steve",
       "secondLayer": true,

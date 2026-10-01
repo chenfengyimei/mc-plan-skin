@@ -5,10 +5,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
+import { Queue } from 'bullmq';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { FixedClock, candidateStorageKey } from '@mc-plan/skin-core';
+import { FixedClock, QUEUE_NAMES, candidateStorageKey } from '@mc-plan/skin-core';
 import { createPrismaClient, type PrismaClient } from '@mc-plan/skin-db';
 import { FakeProvider } from '@mc-plan/skin-provider-sdk';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
@@ -18,10 +20,22 @@ import { processFinalizeJob } from '../../src/finalize.processor.js';
 import { processRenderJob } from '../../src/render.processor.js';
 import { runRetentionCleanup } from '../../src/retention.processor.js';
 import type { WorkerContext } from '../../src/worker-context.js';
+import { RETRYABLE_JOB_OPTIONS, createRenderWorker } from '../../src/worker-factory.js';
 import type { Job } from 'bullmq';
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fakeBullJob = { attemptsMade: 0 } as unknown as Job;
+
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await predicate()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  return false;
+}
 
 describe('渲染→候选→确认→保留 纵向链路（真实 PostgreSQL）', () => {
   let container: StartedPostgreSqlContainer;
@@ -140,17 +154,19 @@ describe('渲染→候选→确认→保留 纵向链路（真实 PostgreSQL）'
         resolveFixture: async () => new TextEncoder().encode('not a png'),
       }),
     };
-    await processRenderJob(
-      badProviderCtx,
-      {
-        jobId: job.id,
-        conversationId: conversation.id,
-        attempt: 1,
-        armModel: 'steve',
-        prompt: '坏结果',
-      },
-      fakeBullJob,
-    );
+    await expect(
+      processRenderJob(
+        badProviderCtx,
+        {
+          jobId: job.id,
+          conversationId: conversation.id,
+          attempt: 1,
+          armModel: 'steve',
+          prompt: '坏结果',
+        },
+        fakeBullJob,
+      ),
+    ).rejects.toThrow('SKIN_VALIDATION_FAILED');
 
     const updated = await db.renderJob.findUniqueOrThrow({ where: { id: job.id } });
     expect(updated.status).toBe('FAILED');
@@ -286,5 +302,112 @@ describe('渲染→候选→确认→保留 纵向链路（真实 PostgreSQL）'
     ).resolves.toBeNull();
     const keptAfter = await db.conversation.findUniqueOrThrow({ where: { id: kept.id } });
     expect(keptAfter.status).toBe('ACTIVE');
+  });
+});
+
+describe('BullMQ 重试语义（真实 Redis + PostgreSQL）', () => {
+  let postgres: StartedPostgreSqlContainer;
+  let redis: StartedRedisContainer;
+  let db: PrismaClient;
+  let storageRoot: string;
+
+  beforeAll(async () => {
+    postgres = await new PostgreSqlContainer('postgres:17-alpine')
+      .withDatabase('mc_plan_skin_retry_test')
+      .withUsername('mc_plan_skin')
+      .withPassword('local-test-only')
+      .start();
+    redis = await new RedisContainer('redis:7-alpine').start();
+    const databaseUrl = postgres.getConnectionUri();
+    const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+    execFileSync(pnpmExecutable, ['migration:deploy'], {
+      cwd: join(packageRoot, '..', '..', 'packages', 'db'),
+      env: { ...process.env, SKIN_DATABASE_URL: databaseUrl },
+      shell: process.platform === 'win32',
+      stdio: 'pipe',
+    });
+    db = createPrismaClient(databaseUrl);
+    storageRoot = await mkdtemp(join(tmpdir(), 'skin-retry-'));
+  });
+
+  afterAll(async () => {
+    await db?.$disconnect();
+    await rm(storageRoot, { recursive: true, force: true });
+    await redis?.stop();
+    await postgres?.stop();
+  });
+
+  it('可重试提供商错误经三次尝试后进入 failed，任务行标记最终错误码', async () => {
+    const conversation = await db.conversation.create({
+      data: {
+        attemptsLimit: 3,
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        messages: { create: { role: 'USER', content: '重试测试' } },
+      },
+    });
+    const job = await db.renderJob.create({
+      data: {
+        conversationId: conversation.id,
+        attempt: 1,
+        kind: 'RENDER',
+        armModel: 'STEVE',
+        prompt: '重试测试',
+      },
+    });
+
+    // 始终返回可重试限流错误的提供商桩
+    let attempts = 0;
+    const flakyCtx: WorkerContext = {
+      db,
+      storage: new FileSystemObjectStorage(storageRoot),
+      provider: {
+        name: 'flaky-test',
+        async generate() {
+          attempts += 1;
+          return {
+            status: 'failed' as const,
+            errorCode: 'PROVIDER_RATE_LIMITED' as const,
+            message: '模拟限流',
+          };
+        },
+      },
+      clock: new FixedClock(new Date()),
+      logger: pino({ level: 'fatal' }),
+      candidateRetentionHours: 24,
+    };
+
+    const connection = { url: redis.getConnectionUrl() };
+    const worker = createRenderWorker(flakyCtx, connection);
+    const queue = new Queue(QUEUE_NAMES.render, { connection });
+    await queue.add(
+      QUEUE_NAMES.render,
+      {
+        jobId: job.id,
+        conversationId: conversation.id,
+        attempt: 1,
+        armModel: 'steve',
+        prompt: '重试测试',
+      },
+      { jobId: job.id, ...RETRYABLE_JOB_OPTIONS },
+    );
+
+    // 等待任务进入 failed（3 次尝试 + 指数退避 ≈ 6 秒）
+    const failed = await waitFor(
+      async () => (await queue.getFailed()).some((entry) => entry.id === job.id),
+      60_000,
+    );
+    expect(failed).toBe(true);
+
+    const failedJobs = await queue.getFailed();
+    const failedJob = failedJobs.find((entry) => entry.id === job.id);
+    expect(failedJob?.attemptsMade).toBe(RETRYABLE_JOB_OPTIONS.attempts);
+    expect(attempts).toBe(RETRYABLE_JOB_OPTIONS.attempts);
+
+    const row = await db.renderJob.findUniqueOrThrow({ where: { id: job.id } });
+    expect(row.status).toBe('FAILED');
+    expect(row.errorCode).toBe('PROVIDER_RATE_LIMITED');
+
+    await worker.close();
+    await queue.close();
   });
 });

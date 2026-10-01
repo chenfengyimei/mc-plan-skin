@@ -76,6 +76,9 @@ export async function processRenderJob(
       job_id: job.id,
       error_code: result.errorCode,
     });
+    // 重试耗尽：抛出使 BullMQ 将任务置于 failed（可处理的死信状态），
+    // 同时数据库行已携带最终稳定错误码
+    throw new Error(result.errorCode);
     return;
   }
 
@@ -96,7 +99,8 @@ export async function processRenderJob(
       error_code: 'SKIN_VALIDATION_FAILED',
       issues: report.issues.map((issue) => issue.code),
     });
-    return;
+    // 不可重试的域内失败：写行后抛出，任务直接进入 failed 死信状态
+    throw new Error('SKIN_VALIDATION_FAILED');
   }
 
   const candidateId = newCandidateId();

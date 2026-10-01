@@ -4,9 +4,9 @@
 
 当前里程碑：F3 Skin 纵向链路；开始条件是正式提供商基准 ADR，以及 Core、Community 所需预发布契约可用。
 
-提前准备：依据 Foundation ADR-0009（`MCP-F1-FOUNDATION-004` 登记），F1 期间允许受限的 Standalone 准备方向——工程骨架（`MCP-F1-SKIN-001`，已完成）与不依赖 Core、Community、Keycloak 的最小纵向链路（`MCP-F1-SKIN-002` 可独立部分，已完成）。本提前准备不改变 F3 的开始条件，不绑定正式厂商、3D 库，不实现 Official 集成。
+提前准备：依据 Foundation ADR-0009（`MCP-F1-FOUNDATION-004` 登记），F1 期间允许受限的 Standalone 准备方向——工程骨架（`MCP-F1-SKIN-001`，已完成）、最小纵向链路可独立部分（`MCP-F1-SKIN-002`，已完成）与契约无关硬化（`MCP-F1-SKIN-003`，已完成：BullMQ 重试/死信语义与 2D 预览组件）。本提前准备不改变 F3 的开始条件，不绑定正式厂商、3D 库，不实现 Official 集成。
 
-契约缺口记录（`MCP-F1-SKIN-002`）：现有 `skin.yaml 0.1.0-draft` 无法表达——①候选预览字节获取；②Standalone 模式最终 PNG 下载；③会话详情与消息列表；④Standalone 匿名安全模式语义（当前全局 security 为 userOAuth）。按契约先行顺序，下一步以 `mc-plan-contracts` 为唯一主仓库补全 draft 契约，然后回到新的 Skin 工作流实现，不得两边各自发明接口。
+契约缺口记录（`MCP-F1-SKIN-002/003`）：现有 `skin.yaml 0.1.0-draft` 无法表达——①候选预览字节获取；②Standalone 模式最终 PNG 下载；③会话详情与消息列表；④用户提前删除会话（保留策略的用户触发入口）；⑤Standalone 匿名安全模式语义（当前全局 security 为 userOAuth）。按契约先行顺序，下一步以 `mc-plan-contracts` 为唯一主仓库补全 draft 契约，然后回到新的 Skin 工作流（`MCP-F1-SKIN-004`）实现，不得两边各自发明接口。
 
 ## 固定顺序
 
