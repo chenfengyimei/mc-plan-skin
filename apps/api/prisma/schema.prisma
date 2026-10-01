@@ -1,0 +1,104 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// 会话状态与公共契约 Conversation.status 同构（数据库侧使用大写枚举）。
+enum SkinConversationStatus {
+  ACTIVE
+  FINALIZING
+  COMPLETED
+  EXPIRED
+  CANCELLED
+}
+
+enum RenderJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum ArmModel {
+  STEVE
+  ALEX
+}
+
+enum ConversationMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+/// 创作会话（Skin 独有数据，见 Foundation docs/system-architecture.md 数据所有权表）。
+model Conversation {
+  id            String                 @id @default(uuid()) @db.Uuid
+  status        SkinConversationStatus @default(ACTIVE)
+  attemptsUsed  Int                    @default(0) @map("attempts_used")
+  attemptsLimit Int                    @map("attempts_limit")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  expiresAt     DateTime               @map("expires_at") @db.Timestamptz(3)
+
+  messages   ConversationMessage[]
+  renderJobs RenderJob[]
+
+  @@map("skin_conversations")
+}
+
+model ConversationMessage {
+  id             String                 @id @default(uuid()) @db.Uuid
+  conversationId String                 @map("conversation_id") @db.Uuid
+  role           ConversationMessageRole
+  content        String
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId], map: "skin_conversation_messages_conversation_idx")
+  @@map("skin_conversation_messages")
+}
+
+/// 一次实际渲染任务（BullMQ 异步执行的持久化状态）。
+model RenderJob {
+  id             String         @id @default(uuid()) @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  attempt        Int
+  status         RenderJobStatus @default(QUEUED)
+  armModel       ArmModel       @map("arm_model")
+  providerCallId String?        @map("provider_call_id")
+  errorCode      String?        @map("error_code")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  candidate    Candidate?
+
+  @@unique([conversationId, attempt], map: "skin_render_jobs_conversation_attempt_key")
+  @@index([conversationId], map: "skin_render_jobs_conversation_idx")
+  @@map("skin_render_jobs")
+}
+
+/// 隔离存储中的候选（24 小时过期，不可通过可预测 URL 访问）。
+model Candidate {
+  id         String   @id @default(uuid()) @db.Uuid
+  renderJobId String   @unique @map("render_job_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  sha256     String
+  byteSize   Int      @map("byte_size")
+  mediaType  String   @map("media_type")
+  armModel   ArmModel @map("arm_model")
+  secondLayer Boolean @default(false) @map("second_layer")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+
+  renderJob RenderJob @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "skin_candidates_expires_idx")
+  @@map("skin_candidates")
+}
