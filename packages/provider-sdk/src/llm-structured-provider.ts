@@ -13,25 +13,38 @@ export interface LlmClient {
 const DESIGN_SYSTEM_PROMPT = [
   '你是 Minecraft Java 版 64×64 皮肤的像素设计师。',
   '根据用户描述输出皮肤设计 JSON，只输出 JSON 本体，不要输出任何其他文字或代码块标记。',
-  'JSON schema（v2，支持发型/脸部/服装层次）：',
+  'JSON schema（v3，支持材质、逐面花纹与服装剪裁）：',
   '{"palette":{"skin":"#RRGGBB","hair":"#RRGGBB","head_overlay":"#RRGGBB|null","shirt":"#RRGGBB",',
   '"shirt_overlay":"#RRGGBB|null","sleeve":"#RRGGBB","arm_overlay":"#RRGGBB|null","pants":"#RRGGBB",',
   '"leg_overlay":"#RRGGBB|null","boots":"#RRGGBB","scarf":"#RRGGBB|null","belt":"#RRGGBB|null",',
-  '"accent":"#RRGGBB","eyes":"#RRGGBB","eyebrows":"#RRGGBB"},',
-  '"hair":{"style":"short|with_bangs|long","fringe_rows":0-2},',
-  '"face":{"eye_style":"round|narrow","mouth":true|false},',
-  '"clothing":{"scarf":true|false,"belt":true|false,"boots":true|false,"sleeve_length":"short|long"},',
-  '"patterns":[{"part":"head|torso|arm|leg","kind":"solid|stripe|border|speckle","color":"#RRGGBB"}]}',
-  '规则：颜色必须是 6 位十六进制；head_overlay/shirt_overlay 等用于帽子/外套第二层（无则 null）；',
-  'scarf 围巾绕脖、belt 腰带、boots 靴子按描述决定；patterns 装饰最多 8 条；',
-  '配色需符合用户描述的主题与情绪，注意颜色和谐（同类色/对比色搭配）。',
+  '"accent":"#RRGGBB","secondary":"#RRGGBB","eyes":"#RRGGBB","eyebrows":"#RRGGBB"},',
+  '"hair":{"style":"short|with_bangs|long","fringe_rows":0-3,"highlights":true|false,"part":"left|center|right"},',
+  '"face":{"eye_style":"round|narrow|bright","expression":"neutral|soft_smile|serious","freckles":true|false},',
+  '"clothing":{"outerwear":"none|jacket|robe|armor","collar":"none|round|high","scarf":true|false,',
+  '"belt":true|false,"cuffs":true|false,"gloves":true|false,"knee_pads":true|false,"boots":true|false,',
+  '"boot_height":2-5,"sleeve_length":"short|long"},',
+  '"texture":{"skin":"smooth|freckled","hair":"solid|layered|streaked",',
+  '"upper":"smooth|cloth|denim|leather|metal|weathered","lower":"smooth|cloth|denim|leather|metal|weathered",',
+  '"intensity":0-0.35},',
+  '"patterns":[{"part":"head|torso|arm|leg","kind":"solid|stripe|pinstripe|checker|diagonal|gradient|border|panel|chevron|speckle",',
+  '"placement":"all|front|sides|back","color":"#RRGGBB","secondary_color":"#RRGGBB|null","scale":1-4}]}',
+  '规则：颜色必须是 6 位十六进制；overlay 色仅在需要帽沿、外套边缘或护甲外层时填写，否则为 null；',
+  'patterns 最多 10 条，优先使用 2-4 条互相协调的图案，不要用 solid 覆盖全部材质；',
+  '使用 front placement 做胸甲、徽记或夹克门襟，使用 all/sides 时保证图案在各面协调；',
+  '配色采用主色、secondary 辅色和 accent 点缀的 60/30/10 层次，避免大面积高饱和纯色。',
   '高质量示例（雪地探险家）：',
   '{"palette":{"skin":"#E8B08A","hair":"#5A4634","head_overlay":null,"shirt":"#3B6EA5","shirt_overlay":null,',
   '"sleeve":"#3B6EA5","arm_overlay":null,"pants":"#4A5A6E","leg_overlay":null,"boots":"#6B4A2E",',
-  '"scarf":"#C84B3C","belt":"#5A4634","accent":"#F2D16B","eyes":"#2B4A8C","eyebrows":"#5A4634"},',
-  '"hair":{"style":"with_bangs","fringe_rows":2},"face":{"eye_style":"round","mouth":true},',
-  '"clothing":{"scarf":true,"belt":true,"boots":true,"sleeve_length":"long"},',
-  '"patterns":[{"part":"torso","kind":"border","color":"#2B4A6E"},{"part":"leg","kind":"speckle","color":"#8A9AB0"}]}',
+  '"scarf":"#C84B3C","belt":"#5A4634","accent":"#F2D16B","secondary":"#294F78",',
+  '"eyes":"#2B4A8C","eyebrows":"#5A4634"},',
+  '"hair":{"style":"with_bangs","fringe_rows":2,"highlights":true,"part":"left"},',
+  '"face":{"eye_style":"bright","expression":"soft_smile","freckles":true},',
+  '"clothing":{"outerwear":"jacket","collar":"high","scarf":true,"belt":true,"cuffs":true,',
+  '"gloves":true,"knee_pads":false,"boots":true,"boot_height":4,"sleeve_length":"long"},',
+  '"texture":{"skin":"freckled","hair":"layered","upper":"cloth","lower":"denim","intensity":0.18},',
+  '"patterns":[{"part":"torso","kind":"panel","placement":"front","color":"#2B4A6E","secondary_color":null,"scale":2},',
+  '{"part":"arm","kind":"stripe","placement":"all","color":"#8BB8D8","secondary_color":null,"scale":3},',
+  '{"part":"leg","kind":"speckle","placement":"all","color":"#8A9AB0","secondary_color":null,"scale":2}]}',
   '模仿此示例的结构丰富度与配色和谐度，但主题、色相须跟随用户描述变化。',
 ].join('\n');
 
@@ -126,7 +139,7 @@ export class LlmStructuredSkinProvider {
       };
     }
 
-    const png = renderSkinDesign(design);
+    const png = renderSkinDesign(design, { armModel: request.armModel });
     void this.#environment;
     return {
       status: 'succeeded',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
+import { PNG } from 'pngjs';
 
 import { PREVIEW_HEIGHT, PREVIEW_WIDTH, decodeSkinForPreview } from '../src/lib/skin-preview';
 
@@ -46,6 +47,20 @@ describe('2D 预览解码与合成', () => {
     expect(alexOuter[3]).toBe(0);
     const steveOuter = pixelAt(steve.pixels, 0, 10);
     expect(steveOuter[3]).toBe(255);
+  });
+
+  it('左腿从规范第二层 UV 区域合成 overlay，而不是重复读取基础层', () => {
+    const image = new PNG({ width: 64, height: 64 });
+    image.data.fill(0);
+    const setPixel = (x: number, y: number, color: [number, number, number, number]) => {
+      const offset = (y * image.width + x) * 4;
+      image.data.set(color, offset);
+    };
+    setPixel(20, 52, [180, 40, 40, 255]); // 左腿基础层正面
+    setPixel(4, 52, [40, 200, 100, 255]); // 左腿第二层正面
+
+    const preview = decodeSkinForPreview(new Uint8Array(PNG.sync.write(image)), 'steve');
+    expect(pixelAt(preview.pixels, 8, 20)).toEqual([40, 200, 100, 255]);
   });
 
   it('非 64×64 输入被拒绝', async () => {

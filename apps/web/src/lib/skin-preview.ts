@@ -30,7 +30,7 @@ const OVERLAY_FACES = {
   rightArm: { x: 44, y: 36, w: 4, h: 12 },
   leftArm: { x: 52, y: 52, w: 4, h: 12 },
   rightLeg: { x: 4, y: 36, w: 4, h: 12 },
-  leftLeg: { x: 20, y: 52, w: 4, h: 12 },
+  leftLeg: { x: 4, y: 52, w: 4, h: 12 },
 } as const;
 
 export interface SkinPreviewData {
