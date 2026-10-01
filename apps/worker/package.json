@@ -20,6 +20,10 @@
   "dependencies": {
     "@mc-plan/skin-config": "workspace:*",
     "@mc-plan/skin-core": "workspace:*",
+    "@mc-plan/skin-db": "workspace:*",
+    "@mc-plan/skin-provider-sdk": "workspace:*",
+    "@mc-plan/skin-test-fixtures": "workspace:*",
+    "@mc-plan/skin-validator": "workspace:*",
     "bullmq": "6.3.11",
     "dotenv": "18.0.4",
     "ioredis": "6.0.0",
@@ -27,6 +31,7 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "12.2.0",
     "@testcontainers/redis": "12.1.0",
     "@types/node": "26.6.3",
     "tsx": "4.23.15",

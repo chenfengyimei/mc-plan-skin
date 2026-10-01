@@ -24,6 +24,11 @@ enum RenderJobStatus {
   CANCELLED
 }
 
+enum RenderJobKind {
+  RENDER
+  FINALIZE
+}
+
 enum ArmModel {
   STEVE
   ALEX
@@ -45,8 +50,9 @@ model Conversation {
   updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
   expiresAt     DateTime               @map("expires_at") @db.Timestamptz(3)
 
-  messages   ConversationMessage[]
-  renderJobs RenderJob[]
+  messages      ConversationMessage[]
+  renderJobs    RenderJob[]
+  finalizedSkin FinalizedSkin?
 
   @@map("skin_conversations")
 }
@@ -64,13 +70,15 @@ model ConversationMessage {
   @@map("skin_conversation_messages")
 }
 
-/// 一次实际渲染任务（BullMQ 异步执行的持久化状态）。
+/// 异步任务（渲染与确认共用；attempt=0 保留给 finalize，配合唯一约束实现一会话一次确认）。
 model RenderJob {
   id             String         @id @default(uuid()) @db.Uuid
   conversationId String         @map("conversation_id") @db.Uuid
   attempt        Int
+  kind           RenderJobKind  @default(RENDER)
   status         RenderJobStatus @default(QUEUED)
   armModel       ArmModel       @map("arm_model")
+  prompt         String
   providerCallId String?        @map("provider_call_id")
   errorCode      String?        @map("error_code")
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -84,21 +92,53 @@ model RenderJob {
   @@map("skin_render_jobs")
 }
 
-/// 隔离存储中的候选（24 小时过期，不可通过可预测 URL 访问）。
+/// 隔离存储中的候选（24 小时过期，键不可预测，不可通过猜测 URL 访问）。
 model Candidate {
-  id         String   @id @default(uuid()) @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
   renderJobId String   @unique @map("render_job_id") @db.Uuid
-  storageKey String   @map("storage_key")
-  sha256     String
-  byteSize   Int      @map("byte_size")
-  mediaType  String   @map("media_type")
-  armModel   ArmModel @map("arm_model")
-  secondLayer Boolean @default(false) @map("second_layer")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  expiresAt  DateTime @map("expires_at") @db.Timestamptz(3)
+  storageKey  String   @map("storage_key")
+  sha256      String
+  byteSize    Int      @map("byte_size")
+  mediaType   String   @map("media_type")
+  armModel    ArmModel @map("arm_model")
+  secondLayer Boolean  @default(false) @map("second_layer")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
 
   renderJob RenderJob @relation(fields: [renderJobId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt], map: "skin_candidates_expires_idx")
   @@map("skin_candidates")
+}
+
+/// Standalone 模式确认后的成品（Official 模式的发布产物在 Community；本表不保存用户主档）。
+model FinalizedSkin {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @unique @map("conversation_id") @db.Uuid
+  storageKey     String   @map("storage_key")
+  sha256         String
+  byteSize        Int      @map("byte_size")
+  mediaType       String   @map("media_type")
+  armModel        ArmModel @map("arm_model")
+  secondLayer     Boolean  @default(false) @map("second_layer")
+  title           String
+  description     String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("skin_finalized_skins")
+}
+
+/// 幂等键存储：请求指纹与响应快照；同键不同请求体返回冲突。
+model IdempotencyRecord {
+  id          String   @id @default(uuid()) @db.Uuid
+  operation   String
+  key         String
+  fingerprint String
+  response    Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([operation, key], map: "skin_idempotency_operation_key_key")
+  @@map("skin_idempotency_records")
 }

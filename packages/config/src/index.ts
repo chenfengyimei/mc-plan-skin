@@ -78,6 +78,12 @@ export const apiConfigSchema = baseConfigSchema
       .refine((value) => value.startsWith('postgresql://') || value.startsWith('postgres://'), {
         message: '必须是 PostgreSQL 连接串，以 postgresql:// 开头',
       }),
+    SKIN_REDIS_URL: z
+      .string()
+      .min(1)
+      .refine((value) => value.startsWith('redis://') || value.startsWith('rediss://'), {
+        message: '必须是 redis:// 或 rediss:// 连接串',
+      }),
     SKIN_CANDIDATE_STORAGE_ROOT: z.string().min(1).default('./data/candidates'),
   })
   .superRefine(requireOfficialCoreUrl);
@@ -111,6 +117,7 @@ export type ApiConfig = {
   apiHost: string;
   apiPort: number;
   databaseUrl: string;
+  redisUrl: string;
   candidateStorageRoot: string;
 };
 
@@ -152,6 +159,7 @@ export function loadApiConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     apiHost: value.SKIN_API_HOST,
     apiPort: value.SKIN_API_PORT,
     databaseUrl: value.SKIN_DATABASE_URL,
+    redisUrl: value.SKIN_REDIS_URL,
     candidateStorageRoot: value.SKIN_CANDIDATE_STORAGE_ROOT,
   };
 }

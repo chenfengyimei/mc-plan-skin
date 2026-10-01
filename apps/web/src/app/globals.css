@@ -57,3 +57,44 @@ h1 {
   font-size: 0.85rem;
   margin-top: 0.5rem;
 }
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.card {
+  border: 1px solid #8886;
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+
+.card textarea,
+.card input,
+.card select {
+  width: 100%;
+  margin: 0.4rem 0;
+  box-sizing: border-box;
+  padding: 0.4rem;
+}
+
+.card button {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.9rem;
+}
+
+.error {
+  color: #b3261e;
+}
+
+.success {
+  color: #1a7f37;
+}
+
+label {
+  display: block;
+  margin-top: 0.4rem;
+}

@@ -20,6 +20,9 @@ importers:
       '@testcontainers/postgresql':
         specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
+      '@testcontainers/redis':
+        specifier: 12.1.0
+        version: 12.1.0(supports-color@10.2.2)
       '@types/node':
         specifier: 26.6.3
         version: 26.6.3
@@ -56,6 +59,9 @@ importers:
       '@mc-plan/skin-core':
         specifier: workspace:*
         version: link:../../packages/skin-core
+      '@mc-plan/skin-db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@nestjs/common':
         specifier: 12.1.2
         version: 12.1.2(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2)
@@ -65,27 +71,27 @@ importers:
       '@nestjs/platform-express':
         specifier: 12.1.2
         version: 12.1.2(@nestjs/common@12.1.2(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@12.1.2)(supports-color@10.2.2)
-      '@prisma/adapter-pg':
-        specifier: 7.10.0
-        version: 7.10.0
-      '@prisma/client':
-        specifier: 7.10.0
-        version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3))(typescript@5.9.3)
+      bullmq:
+        specifier: 6.3.11
+        version: 6.3.11(ioredis@6.0.0(supports-color@10.2.2))(pg@8.23.0)
       dotenv:
         specifier: 18.0.4
         version: 18.0.4
+      ioredis:
+        specifier: 6.0.0
+        version: 6.0.0(supports-color@10.2.2)
       pino:
         specifier: 10.3.1
         version: 10.3.1
-      prisma:
-        specifier: 7.10.0
-        version: 7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3)
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
       rxjs:
         specifier: 7.8.2
         version: 7.8.2
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@nestjs/testing':
         specifier: 12.1.2
@@ -93,6 +99,9 @@ importers:
       '@testcontainers/postgresql':
         specifier: 12.2.0
         version: 12.2.0(supports-color@10.2.2)
+      '@testcontainers/redis':
+        specifier: 12.1.0
+        version: 12.1.0(supports-color@10.2.2)
       '@types/express':
         specifier: 5.0.6
         version: 5.0.6
@@ -148,6 +157,18 @@ importers:
       '@mc-plan/skin-core':
         specifier: workspace:*
         version: link:../../packages/skin-core
+      '@mc-plan/skin-db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@mc-plan/skin-provider-sdk':
+        specifier: workspace:*
+        version: link:../../packages/provider-sdk
+      '@mc-plan/skin-test-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/test-fixtures
+      '@mc-plan/skin-validator':
+        specifier: workspace:*
+        version: link:../../packages/skin-validator
       bullmq:
         specifier: 6.3.11
         version: 6.3.11(ioredis@6.0.0(supports-color@10.2.2))(pg@8.23.0)
@@ -164,6 +185,9 @@ importers:
         specifier: 4.6.5
         version: 4.6.5
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: 12.2.0
+        version: 12.2.0(supports-color@10.2.2)
       '@testcontainers/redis':
         specifier: 12.1.0
         version: 12.1.0(supports-color@10.2.2)
@@ -213,6 +237,25 @@ importers:
       vitest:
         specifier: 5.0.3
         version: 5.0.3(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/db:
+    dependencies:
+      '@prisma/adapter-pg':
+        specifier: 7.10.0
+        version: 7.10.0
+      '@prisma/client':
+        specifier: 7.10.0
+        version: 7.10.0(prisma@7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3))(typescript@5.9.3)
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.3
+        version: 26.6.3
+      prisma:
+        specifier: 7.10.0
+        version: 7.10.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@5.9.3)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
 
   packages/provider-sdk:
     dependencies:

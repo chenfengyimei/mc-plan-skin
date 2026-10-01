@@ -1,0 +1,34 @@
+{
+  "name": "@mc-plan/skin-db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm prisma:generate && tsc -p tsconfig.build.json",
+    "prisma:generate": "prisma generate --config prisma7.config.ts",
+    "prisma:validate": "prisma validate --config prisma7.config.ts",
+    "migration:validate": "pnpm prisma:validate && node scripts/verify-migrations.mjs",
+    "migration:deploy": "node scripts/require-database-url.mjs && prisma migrate deploy --config prisma7.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no tests in db package' && exit 0",
+    "test:unit": "echo 'no tests in db package' && exit 0",
+    "test:integration": "echo 'no tests in db package' && exit 0"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "prisma": "7.10.0",
+    "typescript": "5.9.3"
+  }
+}

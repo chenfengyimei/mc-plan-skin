@@ -11,6 +11,7 @@ export function testConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     apiHost: '127.0.0.1',
     apiPort: 4000,
     databaseUrl: 'postgresql://test:test@127.0.0.1:5432/mc_plan_skin_test',
+    redisUrl: 'redis://127.0.0.1:6379',
     candidateStorageRoot: './data/candidates-test',
     ...overrides,
   };

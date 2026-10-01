@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/playwright-report/**',
       '**/test-results/**',
       'packages/contracts/src/generated/**',
+      'packages/db/src/generated/**',
       'packages/test-fixtures/assets/**',
       'apps/api/src/generated/**',
       'apps/web/next-env.d.ts',

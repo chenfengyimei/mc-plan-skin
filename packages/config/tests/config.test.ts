@@ -4,6 +4,7 @@ import { ConfigError, loadApiConfig, loadWorkerConfig, type ApiConfig } from '..
 function validApiEnv(): NodeJS.ProcessEnv {
   return {
     SKIN_DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/skin',
+    SKIN_REDIS_URL: 'redis://127.0.0.1:6379',
   };
 }
 
@@ -64,6 +65,14 @@ describe('api 配置', () => {
     expect(() =>
       loadApiConfig({ SKIN_DATABASE_URL: 'mysql://user:pass@127.0.0.1:3306/skin' }),
     ).toThrow(/postgresql/);
+  });
+
+  it('API 配置缺失 REDIS_URL 时失败', () => {
+    expect(() =>
+      loadApiConfig({
+        SKIN_DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/skin',
+      }),
+    ).toThrow(/SKIN_REDIS_URL/);
   });
 
   it('非法端口与非法保留期被拒绝', () => {

@@ -33,11 +33,16 @@ export class ProblemFilter implements ExceptionFilter {
           : typeof body === 'object' && body !== null && 'message' in body
             ? String((body as { message: unknown }).message)
             : undefined;
+      // 服务层可在响应体中携带稳定错误码（如 SKIN_ATTEMPTS_EXHAUSTED）
+      const providedCode =
+        typeof body === 'object' && body !== null && 'code' in body
+          ? String((body as { code: unknown }).code)
+          : undefined;
       const problem: ProblemDetails = {
         type: 'about:blank',
         title: exception.name,
         status,
-        code: httpStatusToCode(status),
+        code: providedCode ?? httpStatusToCode(status),
         trace_id: traceId,
         ...(detail !== undefined ? { detail } : {}),
       };

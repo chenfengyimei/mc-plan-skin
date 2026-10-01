@@ -13,3 +13,4 @@ data/
 .DS_Store
 # Prisma 生成的客户端（构建与 typecheck 前会自动 prisma generate）
 apps/api/src/generated/
+packages/db/src/generated/

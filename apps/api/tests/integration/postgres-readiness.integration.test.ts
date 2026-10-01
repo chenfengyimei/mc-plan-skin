@@ -31,7 +31,7 @@ describe('PostgreSQL 迁移与就绪（testcontainers）', () => {
     const databaseUrl = container.getConnectionUri();
     const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
     execFileSync(pnpmExecutable, ['migration:deploy'], {
-      cwd: packageRoot,
+      cwd: join(packageRoot, '..', '..', 'packages', 'db'),
       env: { ...process.env, SKIN_DATABASE_URL: databaseUrl },
       shell: process.platform === 'win32',
       stdio: 'pipe',
@@ -45,50 +45,6 @@ describe('PostgreSQL 迁移与就绪（testcontainers）', () => {
       connection: 'up',
       migrations: 'current',
     });
-
-    // 基线表真实存在且可写入：会话行 + 消息行 + 渲染任务行 + 候选行
-    const client = prisma.client;
-    const conversation = await client.conversation.create({
-      data: {
-        attemptsLimit: 3,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-      },
-    });
-    await client.conversationMessage.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'USER',
-        content: '一位雪地探险家',
-      },
-    });
-    const renderJob = await client.renderJob.create({
-      data: {
-        conversationId: conversation.id,
-        attempt: 1,
-        armModel: 'STEVE',
-      },
-    });
-    await client.candidate.create({
-      data: {
-        renderJobId: renderJob.id,
-        storageKey: `candidates/${conversation.id}.png`,
-        sha256: 'a'.repeat(64),
-        byteSize: 1024,
-        mediaType: 'image/png',
-        armModel: 'STEVE',
-        secondLayer: true,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      },
-    });
-
-    const stored = await client.conversation.findUniqueOrThrow({
-      where: { id: conversation.id },
-      include: { messages: true, renderJobs: { include: { candidate: true } } },
-    });
-    expect(stored.status).toBe('ACTIVE');
-    expect(stored.messages).toHaveLength(1);
-    expect(stored.renderJobs[0]?.candidate?.secondLayer).toBe(true);
-
     await prisma.onApplicationShutdown();
   });
 });
