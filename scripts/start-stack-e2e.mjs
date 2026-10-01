@@ -48,6 +48,8 @@ const sharedEnv = {
   ...process.env,
   SKIN_RUN_MODE: 'standalone',
   SKIN_ENV: 'test',
+  // 测试必须完全离线：显式覆盖 apps/worker/.env 中可能存在的本地 LLM 演示配置。
+  SKIN_PROVIDER: 'fake',
   SKIN_LOG_LEVEL: 'warn',
   SKIN_DATABASE_URL: databaseUrl,
   SKIN_REDIS_URL: redisUrl,
