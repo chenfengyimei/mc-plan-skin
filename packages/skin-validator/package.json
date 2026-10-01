@@ -1,0 +1,33 @@
+{
+  "name": "@mc-plan/skin-validator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests",
+    "test:integration": "echo 'no integration tests' && exit 0"
+  },
+  "dependencies": {
+    "@mc-plan/skin-contracts": "workspace:*",
+    "@mc-plan/skin-core": "workspace:*",
+    "pngjs": "7.0.0"
+  },
+  "devDependencies": {
+    "@mc-plan/skin-test-fixtures": "workspace:*",
+    "@types/node": "26.6.3",
+    "@types/pngjs": "6.0.5",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "fixtures": [
+    {
+      "name": "invalid-32x32",
+      "file": "invalid-32x32.png",
+      "sha256": "5bec2fa46ed69572a21736bb803d46cece641f7fb363994eb50d669b6b76c543",
+      "byteSize": 134,
+      "expectValid": false,
+      "armModel": "steve",
+      "invalidCode": "WRONG_WIDTH",
+      "description": "旧版 32×32 布局，尺寸不满足 Java 64×64"
+    },
+    {
+      "name": "invalid-corrupted",
+      "file": "invalid-corrupted.png",
+      "sha256": "70a6d075548b8f6baae7fffb02a2cd6316fd7c70acd283998975127935791bc8",
+      "byteSize": 156,
+      "expectValid": false,
+      "armModel": "steve",
+      "invalidCode": "DECODE_FAILED",
+      "description": "PNG 签名有效但数据被截断，真实解码失败"
+    },
+    {
+      "name": "invalid-no-second-layer",
+      "file": "invalid-no-second-layer-64x64.png",
+      "sha256": "9cc140d7689943de080d8897615968419819adc7dbc07dbf112c216067183a14",
+      "byteSize": 303,
+      "expectValid": false,
+      "armModel": "steve",
+      "invalidCode": "MISSING_SECOND_LAYER",
+      "description": "基础部件完整但没有 overlay 像素"
+    },
+    {
+      "name": "invalid-not-png",
+      "file": "invalid-not-png.png",
+      "sha256": "6a4a0bd4ee05aaa231a28804a8190f9ffbb34fda0838d301f835692ce05ce6d4",
+      "byteSize": 39,
+      "expectValid": false,
+      "armModel": "steve",
+      "invalidCode": "NOT_PNG",
+      "description": "扩展名是 .png 但字节流不是 PNG（媒体类型不能只看扩展名）"
+    },
+    {
+      "name": "valid-alex",
+      "file": "valid-alex-64x64.png",
+      "sha256": "e4d46406c62b226ef4bb38db45738240de9c9e2ae4350d7a039e23736d86e9d1",
+      "byteSize": 419,
+      "expectValid": true,
+      "armModel": "alex",
+      "secondLayer": true,
+      "description": "Alex 3px 手臂模板 + 双层布局"
+    },
+    {
+      "name": "valid-steve",
+      "file": "valid-steve-64x64.png",
+      "sha256": "cced1e328fe775df43443450e79d3c95d9c466825eeac46115de74e118331465",
+      "byteSize": 390,
+      "expectValid": true,
+      "armModel": "steve",
+      "secondLayer": true,
+      "description": "Steve 4px 手臂模板 + 双层布局"
+    }
+  ]
+}

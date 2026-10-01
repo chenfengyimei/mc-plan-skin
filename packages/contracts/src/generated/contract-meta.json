@@ -1,0 +1,5 @@
+{
+  "source_repo": "mc-plan-contracts",
+  "skin_openapi": "openapi/skin.yaml",
+  "version": "0.1.0-draft"
+}
