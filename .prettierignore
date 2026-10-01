@@ -1,0 +1,14 @@
+node_modules
+dist
+.next
+out
+coverage
+playwright-report
+test-results
+data
+pnpm-lock.yaml
+packages/contracts/src/generated
+packages/test-fixtures/assets
+apps/api/src/generated
+apps/web/next-env.d.ts
+apps/web/next.config.ts

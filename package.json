@@ -1,0 +1,44 @@
+{
+  "name": "@mc-plan/skin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "test:unit": "pnpm -r --if-present test:unit",
+    "test:integration": "pnpm -r --if-present test:integration",
+    "test:e2e": "playwright test",
+    "contract:gen": "pnpm --filter @mc-plan/skin-contracts gen",
+    "contract:check": "node scripts/verify-contracts.mjs",
+    "fixtures:build": "pnpm --filter @mc-plan/skin-test-fixtures build",
+    "fixtures:validate": "pnpm build && tsx scripts/validate-fixtures.mjs",
+    "prisma:generate": "pnpm --filter @mc-plan/skin-api prisma:generate",
+    "prisma:validate": "pnpm --filter @mc-plan/skin-api prisma:validate",
+    "migration:validate": "pnpm --filter @mc-plan/skin-api migration:validate",
+    "check": "pnpm format:check && pnpm build && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm contract:check && pnpm fixtures:validate",
+    "check:full": "pnpm check && pnpm test:integration && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.3.8",
+    "@playwright/test": "1.63.0",
+    "@testcontainers/postgresql": "12.2.0",
+    "@types/node": "26.6.3",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.3"
+  }
+}
