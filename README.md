@@ -9,7 +9,15 @@
 
 ## 当前状态
 
-仅建立产品、架构、自部署和验收文档，不包含业务代码。见 `docs/`。公共接口以 `mc-plan-contracts/openapi/skin.yaml` 为准。
+工程骨架已建立（依据 Foundation ADR-0009，F1 中受限的 Standalone 准备方向，Tracking ID `MCP-F1-SKIN-001`）：可安装、可构建、可启动、可验证的 pnpm workspace，包含 Next.js Web、NestJS API、BullMQ Worker 与六个内部包。公共接口以 `mc-plan-contracts/openapi/skin.yaml`（0.1.0-draft）为准，客户端类型由契约生成，禁止手工复制契约类型。
+
+```powershell
+pnpm install
+pnpm check         # format/lint/typecheck/单测/契约一致性/fixture 校验
+pnpm check:full    # 追加 testcontainers 集成测试与 Playwright 冒烟（需要 Docker）
+```
+
+详见 [AGENTS.md](AGENTS.md) 的真实验收命令与 [docs/STATUS.md](docs/STATUS.md)。
 
 ## 许可
 

@@ -1,8 +1,10 @@
 # Skin 开发计划
 
-状态：Planned
+状态：Active（受限准备方向）
 
 当前里程碑：F3 Skin 纵向链路；开始条件是正式提供商基准 ADR，以及 Core、Community 所需预发布契约可用。
+
+提前准备：依据 Foundation ADR-0009（`MCP-F1-FOUNDATION-004` 登记），F1 期间允许受限的 Standalone 准备方向——工程骨架（`MCP-F1-SKIN-001`，已完成）与不依赖 Core、Community、Keycloak 的最小纵向链路（`MCP-F1-SKIN-002` 及后续）。本提前准备不改变 F3 的开始条件，不绑定正式厂商、3D 库，不实现 Official 集成。
 
 ## 固定顺序
 
@@ -24,7 +26,24 @@
 
 ## 验收命令
 
-当前只运行协调和工作区验证。工程初始化后必须提供真实 lint、typecheck、unit、integration、contract、Playwright E2E、Skin fixture validation、双模式启动和保留清理测试命令。
+工程骨架已建立（`MCP-F1-SKIN-001`），以下命令真实存在且已实际运行通过；双模式启动与保留清理测试命令在对应工作流交付时补充。
+
+```powershell
+pnpm install               # 依赖安装（pnpm@11.19.0，Node >=24.15）
+pnpm format:check           # Prettier
+pnpm lint                   # ESLint
+pnpm typecheck              # 全部包 tsc --noEmit（严格模式）
+pnpm build                  # 全部 apps 与 packages 构建
+pnpm test:unit              # Vitest 单元测试
+pnpm contract:check         # 契约一致性（从已发布 0.1.0-draft 重新生成并比对）
+pnpm fixtures:validate      # Minecraft 皮肤 fixture 校验（有效/无效样本判别）
+pnpm test:integration       # testcontainers：真实 PostgreSQL 迁移/就绪 + Redis/BullMQ
+pnpm test:e2e               # Playwright 冒烟（真实启动 PostgreSQL 容器、API 与 Web）
+pnpm check                  # format + build + lint + typecheck + 单测 + 契约 + fixture
+pnpm check:full             # check + 集成测试 + Playwright 冒烟（需要 Docker）
+```
+
+其中集成测试与 Playwright 冒烟需要 Docker Desktop 运行；首次运行浏览器冒烟前执行 `npx playwright install chromium`。
 
 ## 完成条件
 
