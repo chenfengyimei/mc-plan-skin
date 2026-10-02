@@ -1,4 +1,4 @@
-import type { LlmClient } from './llm-structured-provider.js';
+import { LlmClientError, type LlmClient } from './llm-structured-provider.js';
 
 /** OpenAI 兼容 chat/completions 客户端（LiteLLM 中继、各厂商兼容端点均可）。 */
 export class OpenAiCompatLlmClient implements LlmClient {
@@ -35,7 +35,13 @@ export class OpenAiCompatLlmClient implements LlmClient {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      throw new Error(`LLM HTTP ${response.status}`);
+      const category =
+        response.status === 429
+          ? 'rate_limited'
+          : response.status === 408 || response.status === 504
+            ? 'timeout'
+            : 'unavailable';
+      throw new LlmClientError(category, `LLM HTTP ${response.status}`);
     }
     const json = (await response.json()) as {
       id?: string;

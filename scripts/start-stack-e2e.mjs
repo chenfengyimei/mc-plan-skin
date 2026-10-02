@@ -16,6 +16,7 @@ import { RedisContainer } from '@testcontainers/redis';
  */
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const apiPort = process.env.SKIN_E2E_API_PORT ?? '4000';
 
 const postgres = await new PostgreSqlContainer('postgres:17-alpine')
   .withDatabase('mc_plan_skin_e2e')
@@ -54,8 +55,8 @@ const sharedEnv = {
   SKIN_DATABASE_URL: databaseUrl,
   SKIN_REDIS_URL: redisUrl,
   SKIN_API_HOST: '127.0.0.1',
-  SKIN_API_PORT: '4000',
-  SKIN_CANDIDATE_STORAGE_ROOT: join(rootDir, 'data', 'e2e-candidates'),
+  SKIN_API_PORT: apiPort,
+  SKIN_CANDIDATE_STORAGE_ROOT: join(rootDir, 'data', `e2e-candidates-${apiPort}`),
 };
 
 const children = [
