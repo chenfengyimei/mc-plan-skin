@@ -58,6 +58,7 @@ const DESIGN_SYSTEM_PROMPT = [
   '你是 Minecraft Java 版 64×64 皮肤的像素设计师。',
   '根据用户描述亲自画出每个身体部件的像素蓝图，只输出一个 JSON 对象，不要解释或使用代码块。',
   '不要套用固定服装版型：发型、脸、轮廓、服装分区、饰物和不对称细节都必须直接体现在网格字符里。',
+  '先逐词收集用户描述中的颜色词与服饰主题词，并为每个词指定落点：palette 必须直接服务这些词与描述场景（冷色场景用冷色系、暖色场景用暖色系），禁止替换成与描述无关的通用配色；concept 的 signature_details 逐词对应这些词，最终网格必须逐词自检落实。',
   'JSON 顶层必须且只能包含 version、concept、palette、base、front、back、overlay_front、overlay_back。version 固定为 4。',
   'concept 先完成设计推理，包含 silhouette（轮廓）、outfit（完整穿搭）和 signature_details（3-5 个独有细节字符串）。这些内容必须在后续像素中真实出现。',
   'palette 是 6-16 个颜色，键只能用 A 到 P 的单字符，值必须是 #RRGGBB，例如 {"A":"#F1C7AE","B":"#A52D38"}。',
@@ -68,7 +69,9 @@ const DESIGN_SYSTEM_PROMPT = [
   '网格尺寸严格如下：head 为 8 行且每行 8 字符；torso 为 12 行且每行 8 字符；四肢均为 12 行且每行 4 字符。',
   '每个 front、back、overlay_front、overlay_back 都必须完整包含上述六个部件，行从上到下，字符从角色自身左到右。',
   'overlay 两层合计至少画 12 个非点号像素并覆盖至少 2 个身体部件；只在轮廓外凸、发丝、衣物层次或饰物需要时画，不要整面复制 base。',
-  '构图要求：先从描述提炼 3-5 个独有视觉特征，再把它们分布到头、躯干和四肢；正反面要呼应，但允许左右不对称。',
+  '构图要求：先从描述提炼 3-5 个独有视觉特征，再把它们分布到头、躯干和四肢。',
+  '服饰必须锚定到对应部位行带：围巾与项链画在 head 最下 1-2 行和 torso 最上 1-2 行的颈部环带，帽子与头饰画在 head 顶部 1-3 行，外套与斗篷铺满 torso 并用 overlay 表现翻领和前摆，腰带只画在 torso 最下 1-2 行，手套画在手臂最下 2-3 行，靴子画在腿部最下 3-4 行；用户没有提到的服饰不要凭空添加，更不要放错位置。',
+  'back 是 front 的真实背面：正面每个服装分区、色块边界与 overlay 外凸，都要在背面相同的行带上出现对应像素；左右手臂与双腿的服装基色一致，细节可以对称呼应；overlay 与基础层的外边缘必须对齐，不得悬空偏移。',
   '头部和躯干正面都至少使用 3 种颜色，四肢正面各至少使用 2 种颜色，基础皮肤整体至少实际使用 6 种颜色。',
   '头部直接画出发际线、眼睛和表情；身体直接画出衣物边界、褶皱或标志，不存在任何预设夹克或盔甲。',
   '即使用户只描述人物外貌，也要为其原创一套完整穿搭；除非用户明确要求同色套装，不要把发色直接铺满上衣和裤子。',
@@ -81,7 +84,7 @@ const DESIGN_SYSTEM_PROMPT = [
   '"base":{"head":"A","torso":"B","right_arm":"B","left_arm":"B","right_leg":"B","left_leg":"B"},',
   '"front":{"head":["8字符×8行"],"torso":["8字符×12行"],"right_arm":["4字符×12行"],"left_arm":["4字符×12行"],"right_leg":["4字符×12行"],"left_leg":["4字符×12行"]},',
   '"back":{"结构和尺寸同 front"},"overlay_front":{"结构和尺寸同 front，可用点号"},"overlay_back":{"结构和尺寸同 front，可用点号"}}',
-  '输出前逐项自检：JSON 可解析；所有行数和行宽精确；没有未定义字符；front/back 没有点号；颜色与不同行数达到下限；overlay 至少 12 像素且覆盖 2 个部件。',
+  '输出前逐项自检：JSON 可解析；所有行数和行宽精确；没有未定义字符；front/back 没有点号；颜色与不同行数达到下限；overlay 至少 12 像素且覆盖 2 个部件；描述中每个颜色词与服饰词都出现在网格且位于正确部位行带；配色服务于描述场景而不是通用模板；back 与 front 行带一致且 overlay 与基础层边缘对齐。',
 ].join('\n');
 
 const DETAIL_SYSTEM_PROMPT = [
@@ -92,6 +95,7 @@ const DETAIL_SYSTEM_PROMPT = [
   '输出 12-36 个互不重复的行补丁。优先修正机器列出的问题，并把 concept 的每个 signature detail 映射为实际像素。',
   '至少 4 行用于 overlay_front 且覆盖两个部件；用它表现发丝、荷叶边、飘带、挂饰、衣摆或其他真实外凸层次。',
   '避免整行同色覆盖。使用 1 像素轮廓、内阴影、高光和左右不对称，让头、躯干与四肢形成多种不同像素行。',
+  '补丁必须遵守部位锚定：围巾在颈部行带，帽饰在头顶行带，外套层次优先用 overlay_front 表现；不得把描述的主题色替换成通用配色；front 与 overlay 的外边缘必须对齐。',
   '只能使用输入 palette 已有字符；不要新增颜色，不要返回 concept、palette 或完整网格。',
 ].join('\n');
 
@@ -268,6 +272,7 @@ export class LlmStructuredSkinProvider {
       `皮肤描述：${request.prompt}`,
       `手臂模型：${request.armModel}（4px=Steve 风格，3px=Alex 风格，只影响配色倾向）`,
       `这是本次会话的第 ${request.attempt} 次渲染。`,
+      '描述中的每个颜色词与服饰词都必须真实出现在最终像素中，并位于正确的身体部位。',
     ].join('\n');
 
     let draft: SkinDesign | undefined;
