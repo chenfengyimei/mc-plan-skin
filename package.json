@@ -8,6 +8,8 @@
     "node": ">=24.15.0"
   },
   "scripts": {
+    "start:demo": "node scripts/start-demo.mjs --provider=fake",
+    "start:real": "node scripts/start-demo.mjs --provider=llm",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

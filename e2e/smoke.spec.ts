@@ -13,8 +13,8 @@ test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }
     timeout: 20_000,
   });
 
-  await page.getByRole('button', { name: /请求渲染/ }).click();
-  await expect(page.getByTestId('render-0')).toContainText('succeeded', { timeout: 60_000 });
+  await page.getByRole('button', { name: /请求(真实)?渲染/ }).click();
+  await expect(page.getByTestId('render-0')).toHaveClass(/render-succeeded/, { timeout: 60_000 });
 
   const preview = page.getByTestId('skin-preview-3d').first();
   await expect(preview).toBeVisible();
@@ -71,7 +71,7 @@ test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }
   const confirmButton = page.locator('[data-testid^="confirm-"]').first();
   await confirmButton.click();
 
-  await expect(page.getByTestId('finalize-status')).toContainText('succeeded', {
+  await expect(page.locator('.finalize-status')).toHaveClass(/finalize-succeeded/, {
     timeout: 60_000,
   });
   await expect(page.getByTestId('finalize-done')).toBeVisible();

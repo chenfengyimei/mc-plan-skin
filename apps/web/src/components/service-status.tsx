@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 
 type ServiceState = 'checking' | 'healthy' | 'unreachable';
 
-export function ServiceStatus() {
+export type ProviderMode = 'real' | 'demo';
+
+export function ServiceStatus({ providerMode }: { providerMode: ProviderMode }) {
   const [state, setState] = useState<ServiceState>('checking');
 
   useEffect(() => {
@@ -30,12 +32,30 @@ export function ServiceStatus() {
   }, []);
 
   return (
-    <div className="status-card">
-      <strong>API 服务状态：</strong>
-      {state === 'checking' && <span className="badge badge-idle">检测中</span>}
-      {state === 'healthy' && <span className="badge badge-ok">正常</span>}
-      {state === 'unreachable' && <span className="badge badge-error">不可用</span>}
-      <p className="muted">运行模式：standalone（未接入 MC Plan 账号体系）</p>
+    <div className="service-status" role="status" aria-live="polite">
+      <div className={`service-item service-${state}`}>
+        <span className="service-dot" aria-hidden="true" />
+        <span>
+          <small>Studio API</small>
+          <strong>
+            {state === 'checking' && '正在连接'}
+            {state === 'healthy' && '服务在线'}
+            {state === 'unreachable' && '连接失败'}
+          </strong>
+        </span>
+        <span
+          className={`badge ${state === 'healthy' ? 'badge-ok' : state === 'unreachable' ? 'badge-error' : 'badge-idle'}`}
+        >
+          {state === 'checking' ? '检测中' : state === 'healthy' ? '正常' : '不可用'}
+        </span>
+      </div>
+      <div className={`provider-chip provider-${providerMode}`}>
+        <span aria-hidden="true">{providerMode === 'real' ? '✦' : '◇'}</span>
+        <span>
+          <small>Generation</small>
+          <strong>{providerMode === 'real' ? '真实模型' : '固定样例'}</strong>
+        </span>
+      </div>
     </div>
   );
 }

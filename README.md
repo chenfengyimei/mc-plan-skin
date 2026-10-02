@@ -17,6 +17,16 @@ pnpm check         # format/lint/typecheck/单测/契约一致性/fixture 校验
 pnpm check:full    # 追加 testcontainers 集成测试与 Playwright 冒烟（需要 Docker）
 ```
 
+本地体验提供两个明确区分的启动入口（都需要 Docker Desktop）：
+
+```powershell
+pnpm start:demo    # 固定 fixture，只用于离线演示与界面检查
+pnpm start:real    # 使用 apps/worker/.env 中的 LLM 配置进行真实逐像素生成
+```
+
+`start:real` 会强制选择 `SKIN_PROVIDER=llm`；缺少 `SKIN_LLM_BASE_URL`、`SKIN_LLM_API_KEY`
+或 `SKIN_LLM_MODEL` 时启动失败，不会静默退回固定样例。密钥文件已被 Git 忽略。
+
 详见 [AGENTS.md](AGENTS.md) 的真实验收命令与 [docs/STATUS.md](docs/STATUS.md)。
 
 ## 许可

@@ -11,7 +11,14 @@ import { RedisContainer } from '@testcontainers/redis';
  */
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const providerArgument = process.argv.find((argument) => argument.startsWith('--provider='));
+const provider = providerArgument?.split('=', 2)[1] ?? 'fake';
+if (!['fake', 'llm'].includes(provider)) {
+  console.error('[local] --provider 只支持 fake 或 llm');
+  process.exit(1);
+}
 
+console.log(`[local] 启动模式：${provider === 'llm' ? '真实 LLM Provider' : '固定 Fake fixture'}`);
 console.log('[demo] 启动 PostgreSQL 与 Redis 容器…');
 const postgres = await new PostgreSqlContainer('postgres:17-alpine')
   .withDatabase('skin')
@@ -42,6 +49,9 @@ const sharedEnv = {
   ...process.env,
   SKIN_RUN_MODE: 'standalone',
   SKIN_ENV: 'development',
+  // 启动入口必须显式决定 Provider：真实模式缺少 LLM 配置时由 worker 配置校验直接失败，
+  // 绝不静默降级为会重复返回 fixture 的 Fake Provider。
+  SKIN_PROVIDER: provider,
   SKIN_LOG_LEVEL: 'info',
   SKIN_DATABASE_URL: databaseUrl,
   SKIN_REDIS_URL: redisUrl,
@@ -53,10 +63,8 @@ const sharedEnv = {
   SKIN_OFFICIAL_CORE_BASE_URL: '',
 };
 
-// 【仅本地演示】worker 的 LLM 提供商：
-// 由 apps/worker/.env（gitignored）中的 SKIN_PROVIDER / SKIN_LLM_* 主导
-// （dotenv 自动加载），密钥只留在本地文件，绝不写入 Git 或日志。
-// 未配置时 worker 默认 Fake Provider。
+// 真实模式的 SKIN_LLM_* 由 apps/worker/.env（gitignored）提供；dotenv 不覆盖这里显式
+// 选择的 SKIN_PROVIDER。密钥只留在本地文件，绝不写入 Git 或日志。
 
 const children = [];
 // 不使用 shell:true：Windows 下含空格的 node 路径会被截断
