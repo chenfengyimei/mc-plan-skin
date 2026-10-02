@@ -312,6 +312,12 @@ label {
   transition: transform 110ms ease-out;
 }
 
+.skin-rig {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
 .skin-preview-stage.is-dragging .skin-model {
   transition: none;
 }
@@ -322,6 +328,18 @@ label {
   position: absolute;
   display: block;
   transform-style: preserve-3d;
+}
+
+.skin-cuboid {
+  transform-origin: 50% 0 0;
+}
+
+.skin-cuboid-head {
+  transform-origin: 50% 100% 0;
+}
+
+.skin-cuboid-torso {
+  transform-origin: 50% 50% 0;
 }
 
 .skin-cuboid-layer {
@@ -394,6 +412,332 @@ label {
   padding-inline: 0.7rem;
   color: #a9c1d5;
   font-size: 0.75rem;
+}
+
+.skin-animation-panel {
+  padding: 0.85rem;
+  border-top: 1px solid rgb(137 195 240 / 12%);
+  background: rgb(5 11 20 / 72%);
+}
+
+.skin-animation-heading {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skin-animation-heading div {
+  display: grid;
+  gap: 0.14rem;
+}
+
+.skin-animation-heading strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+.skin-animation-heading small {
+  color: #8299ad;
+  font-size: 0.68rem;
+}
+
+.skin-animation-panel button {
+  min-height: 32px;
+  margin: 0;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid rgb(135 198 247 / 17%);
+  border-radius: 9px;
+  background: rgb(113 184 239 / 8%);
+  box-shadow: none;
+  color: #b9ccdc;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.skin-animation-panel button:hover,
+.skin-animation-panel button.is-active {
+  border-color: rgb(110 205 255 / 48%);
+  background: rgb(70 164 226 / 20%);
+  color: #eff9ff;
+  filter: none;
+  transform: none;
+}
+
+.skin-animation-panel .skin-playback-button {
+  min-width: 65px;
+  border-color: rgb(154 132 255 / 34%);
+  background: rgb(122 91 225 / 18%);
+  color: #ddd5ff;
+}
+
+.skin-animation-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.skin-animation-sliders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  margin-top: 0.7rem;
+}
+
+.skin-animation-sliders label {
+  margin: 0;
+  color: #8ea5b8;
+  font-size: 0.66rem;
+  font-weight: 550;
+}
+
+.skin-animation-sliders label span {
+  display: flex;
+  justify-content: space-between;
+}
+
+.skin-animation-sliders output {
+  color: #c6dcf0;
+  font-variant-numeric: tabular-nums;
+}
+
+.skin-animation-sliders input {
+  width: 100%;
+  height: 14px;
+  margin: 0.28rem 0 0;
+  padding: 0;
+  accent-color: #6bbcf1;
+}
+
+.skin-animation-panel .skin-auto-rotate {
+  width: 100%;
+  margin-top: 0.7rem;
+}
+
+.skin-animation-panel .skin-auto-rotate.is-active {
+  border-color: rgb(104 228 185 / 38%);
+  background: rgb(49 186 141 / 15%);
+  color: #83ebc6;
+}
+
+.skin-animation-idle {
+  animation: skin-idle-rig var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-idle .skin-cuboid-head {
+  animation: skin-idle-head var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-idle .skin-cuboid-right-arm {
+  animation: skin-idle-right-arm var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-idle .skin-cuboid-left-arm {
+  animation: skin-idle-left-arm var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-walk {
+  animation: skin-walk-bob var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-walk .skin-cuboid-right-arm,
+.skin-animation-walk .skin-cuboid-left-leg {
+  animation: skin-walk-forward var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-walk .skin-cuboid-left-arm,
+.skin-animation-walk .skin-cuboid-right-leg {
+  animation: skin-walk-backward var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-run {
+  animation: skin-run-bob var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-run .skin-cuboid-right-arm,
+.skin-animation-run .skin-cuboid-left-leg {
+  animation: skin-run-forward var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-run .skin-cuboid-left-arm,
+.skin-animation-run .skin-cuboid-right-leg {
+  animation: skin-run-backward var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-fly {
+  animation: skin-fly-rig var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-fly .skin-cuboid-right-arm {
+  animation: skin-fly-right-arm var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-fly .skin-cuboid-left-arm {
+  animation: skin-fly-left-arm var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-fly .skin-cuboid-right-leg {
+  animation: skin-fly-right-leg var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-animation-fly .skin-cuboid-left-leg {
+  animation: skin-fly-left-leg var(--skin-animation-duration) ease-in-out infinite;
+}
+
+.skin-rig.is-paused,
+.skin-rig.is-paused .skin-cuboid {
+  animation-play-state: paused;
+}
+
+@keyframes skin-idle-rig {
+  0%,
+  100% {
+    transform: translateY(1px);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes skin-idle-head {
+  0%,
+  100% {
+    transform: rotateY(-3deg) rotateZ(-1deg);
+  }
+  50% {
+    transform: rotateY(4deg) rotateZ(1deg);
+  }
+}
+
+@keyframes skin-idle-right-arm {
+  0%,
+  100% {
+    transform: rotateZ(2deg);
+  }
+  50% {
+    transform: rotateZ(5deg);
+  }
+}
+
+@keyframes skin-idle-left-arm {
+  0%,
+  100% {
+    transform: rotateZ(-2deg);
+  }
+  50% {
+    transform: rotateZ(-5deg);
+  }
+}
+
+@keyframes skin-walk-forward {
+  0%,
+  100% {
+    transform: rotateX(-28deg);
+  }
+  50% {
+    transform: rotateX(28deg);
+  }
+}
+
+@keyframes skin-walk-backward {
+  0%,
+  100% {
+    transform: rotateX(28deg);
+  }
+  50% {
+    transform: rotateX(-28deg);
+  }
+}
+
+@keyframes skin-walk-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes skin-run-forward {
+  0%,
+  100% {
+    transform: rotateX(-48deg);
+  }
+  50% {
+    transform: rotateX(48deg);
+  }
+}
+
+@keyframes skin-run-backward {
+  0%,
+  100% {
+    transform: rotateX(48deg);
+  }
+  50% {
+    transform: rotateX(-48deg);
+  }
+}
+
+@keyframes skin-run-bob {
+  0%,
+  100% {
+    transform: translateY(2px) rotateX(4deg);
+  }
+  50% {
+    transform: translateY(-4px) rotateX(7deg);
+  }
+}
+
+@keyframes skin-fly-rig {
+  0%,
+  100% {
+    transform: translateY(5px) rotateX(46deg) rotateZ(-2deg);
+  }
+  50% {
+    transform: translateY(-5px) rotateX(50deg) rotateZ(2deg);
+  }
+}
+
+@keyframes skin-fly-right-arm {
+  0%,
+  100% {
+    transform: rotateX(-18deg) rotateZ(32deg);
+  }
+  50% {
+    transform: rotateX(-10deg) rotateZ(46deg);
+  }
+}
+
+@keyframes skin-fly-left-arm {
+  0%,
+  100% {
+    transform: rotateX(-18deg) rotateZ(-32deg);
+  }
+  50% {
+    transform: rotateX(-10deg) rotateZ(-46deg);
+  }
+}
+
+@keyframes skin-fly-right-leg {
+  0%,
+  100% {
+    transform: rotateX(8deg) rotateZ(3deg);
+  }
+  50% {
+    transform: rotateX(-12deg) rotateZ(5deg);
+  }
+}
+
+@keyframes skin-fly-left-leg {
+  0%,
+  100% {
+    transform: rotateX(-12deg) rotateZ(-5deg);
+  }
+  50% {
+    transform: rotateX(8deg) rotateZ(-3deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

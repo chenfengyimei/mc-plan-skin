@@ -7,11 +7,14 @@ import type { ArmModel } from '@mc-plan/skin-core';
 
 import {
   DEFAULT_SKIN_ROTATION,
+  SKIN_ANIMATIONS,
+  getSkinAnimationDurationSeconds,
   getSkinModelParts,
   rotateSkinPreview,
   rotateSkinPreviewByKey,
 } from '../lib/skin-preview';
 import type {
+  SkinAnimationName,
   SkinFaceName,
   SkinFaceSet,
   SkinPartDefinition,
@@ -41,6 +44,10 @@ const FACE_BRIGHTNESS: Record<SkinFaceName, number> = {
   right: 0.9,
   back: 0.72,
 };
+
+const ANIMATION_NAMES = Object.keys(SKIN_ANIMATIONS) as SkinAnimationName[];
+
+type SkinRigStyle = CSSProperties & { '--skin-animation-duration': string };
 
 function facePosition(
   name: SkinFaceName,
@@ -182,6 +189,11 @@ function SkinPart({
 export function SkinPreview({ bytes, armModel, scale = 6 }: SkinPreviewProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [rotation, setRotation] = useState<SkinPreviewRotation>(DEFAULT_SKIN_ROTATION);
+  const [animation, setAnimation] = useState<SkinAnimationName>('walk');
+  const [playing, setPlaying] = useState(true);
+  const [speed, setSpeed] = useState(1);
+  const [zoom, setZoom] = useState(1);
+  const [autoRotate, setAutoRotate] = useState(false);
   const [dragging, setDragging] = useState(false);
   const drag = useRef<DragState | null>(null);
   const parts = useMemo(() => getSkinModelParts(armModel), [armModel]);
@@ -193,11 +205,28 @@ export function SkinPreview({ bytes, armModel, scale = 6 }: SkinPreviewProps) {
     return () => URL.revokeObjectURL(nextUrl);
   }, [bytes]);
 
+  useEffect(() => {
+    if (!autoRotate) return;
+    let frame = 0;
+    let previousTime: number | null = null;
+    const tick = (time: number) => {
+      if (previousTime !== null) {
+        const elapsed = Math.min(time - previousTime, 64);
+        setRotation((current) => ({ ...current, yaw: current.yaw + elapsed * 0.018 * speed }));
+      }
+      previousTime = time;
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoRotate, speed]);
+
   const rotate = (deltaX: number, deltaY: number) => {
     setRotation((current) => rotateSkinPreview(current, deltaX, deltaY));
   };
 
   const beginDrag = (input: DragState['input'], x: number, y: number) => {
+    setAutoRotate(false);
     drag.current = { input, x, y };
     setDragging(true);
   };
@@ -239,9 +268,13 @@ export function SkinPreview({ bytes, armModel, scale = 6 }: SkinPreviewProps) {
     const next = rotateSkinPreviewByKey(rotation, event.key);
     if (next !== rotation) {
       event.preventDefault();
+      setAutoRotate(false);
       setRotation(next);
     }
   };
+
+  const animationDuration = getSkinAnimationDurationSeconds(animation, speed);
+  const rigStyle: SkinRigStyle = { '--skin-animation-duration': `${animationDuration}s` };
 
   return (
     <div className="skin-preview-shell">
@@ -254,6 +287,11 @@ export function SkinPreview({ bytes, armModel, scale = 6 }: SkinPreviewProps) {
         data-testid="skin-preview-3d"
         data-yaw={rotation.yaw.toFixed(1)}
         data-pitch={rotation.pitch.toFixed(1)}
+        data-animation={animation}
+        data-playing={playing ? 'true' : 'false'}
+        data-speed={speed.toFixed(1)}
+        data-auto-rotate={autoRotate ? 'true' : 'false'}
+        data-zoom={zoom.toFixed(2)}
         role="img"
         tabIndex={0}
         aria-label="3D 皮肤预览，可拖拽或使用方向键旋转"
@@ -270,30 +308,128 @@ export function SkinPreview({ bytes, armModel, scale = 6 }: SkinPreviewProps) {
         {imageUrl && (
           <div
             className="skin-model"
-            style={{ transform: `rotateX(${rotation.pitch}deg) rotateY(${rotation.yaw}deg)` }}
+            style={{
+              transform: `rotateX(${rotation.pitch}deg) rotateY(${rotation.yaw}deg) scale(${zoom})`,
+            }}
           >
-            {parts.map((part) => (
-              <SkinPart key={part.id} part={part} scale={scale} imageUrl={imageUrl} />
-            ))}
+            <div
+              className={`skin-rig skin-animation-${animation} ${playing ? 'is-playing' : 'is-paused'}`}
+              style={rigStyle}
+            >
+              {parts.map((part) => (
+                <SkinPart key={part.id} part={part} scale={scale} imageUrl={imageUrl} />
+              ))}
+            </div>
           </div>
         )}
         <div className="skin-preview-platform" aria-hidden="true" />
       </div>
       <div className="skin-preview-controls" aria-label="预览旋转控制">
-        <button type="button" aria-label="向左旋转" onClick={() => rotate(-24, 0)}>
+        <button
+          type="button"
+          aria-label="向左旋转"
+          onClick={() => {
+            setAutoRotate(false);
+            rotate(-24, 0);
+          }}
+        >
           ←
         </button>
         <span>拖动查看全身</span>
-        <button type="button" aria-label="向右旋转" onClick={() => rotate(24, 0)}>
+        <button
+          type="button"
+          aria-label="向右旋转"
+          onClick={() => {
+            setAutoRotate(false);
+            rotate(24, 0);
+          }}
+        >
           →
         </button>
         <button
           type="button"
           className="skin-preview-reset"
           aria-label="重置预览视角"
-          onClick={() => setRotation({ ...DEFAULT_SKIN_ROTATION })}
+          onClick={() => {
+            setAutoRotate(false);
+            setZoom(1);
+            setRotation({ ...DEFAULT_SKIN_ROTATION });
+          }}
         >
           重置
+        </button>
+      </div>
+      <div className="skin-animation-panel">
+        <div className="skin-animation-heading">
+          <div>
+            <strong>动作预览</strong>
+            <small>{SKIN_ANIMATIONS[animation].description}</small>
+          </div>
+          <button
+            type="button"
+            className="skin-playback-button"
+            aria-label={playing ? '暂停动作' : '播放动作'}
+            aria-pressed={playing}
+            onClick={() => setPlaying((current) => !current)}
+          >
+            {playing ? 'Ⅱ 暂停' : '▶ 播放'}
+          </button>
+        </div>
+        <div className="skin-animation-actions" role="group" aria-label="选择预览动作">
+          {ANIMATION_NAMES.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={animation === name ? 'is-active' : ''}
+              aria-label={`播放${SKIN_ANIMATIONS[name].label}动作`}
+              aria-pressed={animation === name}
+              onClick={() => {
+                setAnimation(name);
+                setPlaying(true);
+              }}
+            >
+              {SKIN_ANIMATIONS[name].label}
+            </button>
+          ))}
+        </div>
+        <div className="skin-animation-sliders">
+          <label>
+            <span>
+              动画速度 <output>{speed.toFixed(1)}×</output>
+            </span>
+            <input
+              aria-label="动画速度"
+              type="range"
+              min="0.5"
+              max="2"
+              step="0.1"
+              value={speed}
+              onChange={(event) => setSpeed(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            <span>
+              预览缩放 <output>{Math.round(zoom * 100)}%</output>
+            </span>
+            <input
+              aria-label="预览缩放"
+              type="range"
+              min="0.78"
+              max="1.28"
+              step="0.02"
+              value={zoom}
+              onChange={(event) => setZoom(Number(event.target.value))}
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          className={`skin-auto-rotate${autoRotate ? ' is-active' : ''}`}
+          aria-label={autoRotate ? '关闭自动旋转' : '开启自动旋转'}
+          aria-pressed={autoRotate}
+          onClick={() => setAutoRotate((current) => !current)}
+        >
+          自动旋转 · {autoRotate ? '开' : '关'}
         </button>
       </div>
     </div>

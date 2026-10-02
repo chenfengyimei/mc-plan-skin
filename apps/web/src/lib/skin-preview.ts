@@ -27,6 +27,21 @@ export interface SkinPreviewRotation {
   pitch: number;
 }
 
+export type SkinAnimationName = 'idle' | 'walk' | 'run' | 'fly';
+
+export interface SkinAnimationDefinition {
+  label: string;
+  description: string;
+  baseDurationSeconds: number;
+}
+
+export const SKIN_ANIMATIONS: Record<SkinAnimationName, SkinAnimationDefinition> = {
+  idle: { label: '待机', description: '轻微呼吸与重心起伏', baseDurationSeconds: 2.8 },
+  walk: { label: '行走', description: '自然交替摆动四肢', baseDurationSeconds: 0.92 },
+  run: { label: '跑步', description: '更大幅度的快速步态', baseDurationSeconds: 0.5 },
+  fly: { label: '飞行', description: '前倾飞行并展开四肢', baseDurationSeconds: 1.15 },
+};
+
 export const DEFAULT_SKIN_ROTATION: SkinPreviewRotation = { yaw: -28, pitch: -8 };
 
 const FACE_NAMES: SkinFaceName[] = ['top', 'bottom', 'left', 'front', 'right', 'back'];
@@ -175,6 +190,15 @@ export function getSkinModelParts(armModel: ArmModel): SkinPartDefinition[] {
 
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+/** 根据播放速度返回 CSS 动画周期，避免零速和异常输入。 */
+export function getSkinAnimationDurationSeconds(
+  animation: SkinAnimationName,
+  speed: number,
+): number {
+  const safeSpeed = clamp(Number.isFinite(speed) ? speed : 1, 0.25, 2);
+  return SKIN_ANIMATIONS[animation].baseDurationSeconds / safeSpeed;
 }
 
 /** 将指针位移转换成稳定旋转；俯仰限幅，水平旋转不截断。 */

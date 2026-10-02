@@ -19,6 +19,39 @@ test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }
   const preview = page.getByTestId('skin-preview-3d').first();
   await expect(preview).toBeVisible();
   await preview.scrollIntoViewIfNeeded();
+
+  await expect(preview).toHaveAttribute('data-animation', 'walk');
+  await page.getByRole('button', { name: '播放跑步动作' }).first().click();
+  await expect(preview).toHaveAttribute('data-animation', 'run');
+  await expect
+    .poll(() =>
+      preview
+        .locator('.skin-cuboid-right-arm')
+        .evaluate((element) => getComputedStyle(element).animationName),
+    )
+    .toContain('skin-run-forward');
+
+  await page.getByRole('button', { name: '暂停动作' }).first().click();
+  await expect(preview).toHaveAttribute('data-playing', 'false');
+  await expect
+    .poll(() =>
+      preview
+        .locator('.skin-cuboid-right-arm')
+        .evaluate((element) => getComputedStyle(element).animationPlayState),
+    )
+    .toBe('paused');
+  await page.getByRole('button', { name: '播放动作' }).first().click();
+  await page.getByRole('slider', { name: '动画速度' }).first().fill('1.6');
+  await expect(preview).toHaveAttribute('data-speed', '1.6');
+  await page.getByRole('slider', { name: '预览缩放' }).first().fill('1.16');
+  await expect(preview).toHaveAttribute('data-zoom', '1.16');
+
+  await page.getByRole('button', { name: '开启自动旋转' }).first().click();
+  await expect(preview).toHaveAttribute('data-auto-rotate', 'true');
+  const autoRotateYaw = await preview.getAttribute('data-yaw');
+  await expect.poll(() => preview.getAttribute('data-yaw')).not.toBe(autoRotateYaw);
+
+  await preview.scrollIntoViewIfNeeded();
   const initialYaw = await preview.getAttribute('data-yaw');
   const bounds = await preview.boundingBox();
   expect(bounds).not.toBeNull();
@@ -29,8 +62,10 @@ test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }
     await page.mouse.up();
   }
   await expect.poll(() => preview.getAttribute('data-yaw')).not.toBe(initialYaw);
+  await expect(preview).toHaveAttribute('data-auto-rotate', 'false');
   await page.getByRole('button', { name: '重置预览视角' }).first().click();
   await expect(preview).toHaveAttribute('data-yaw', '-28.0');
+  await expect(preview).toHaveAttribute('data-zoom', '1.00');
 
   await page.getByLabel('成品标题').fill('雪地探险家');
   const confirmButton = page.locator('[data-testid^="confirm-"]').first();

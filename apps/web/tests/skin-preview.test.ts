@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_SKIN_ROTATION,
+  SKIN_ANIMATIONS,
+  getSkinAnimationDurationSeconds,
   getSkinModelParts,
   rotateSkinPreview,
   rotateSkinPreviewByKey,
@@ -77,5 +79,19 @@ describe('3D 皮肤预览旋转', () => {
     expect(rotated.yaw).toBe(-16);
     expect(rotateSkinPreviewByKey(rotated, 'Home')).toEqual(DEFAULT_SKIN_ROTATION);
     expect(rotateSkinPreviewByKey(rotated, 'Enter')).toBe(rotated);
+  });
+});
+
+describe('3D 皮肤预览动画', () => {
+  it('提供待机、行走、跑步与飞行四种动作', () => {
+    expect(Object.keys(SKIN_ANIMATIONS)).toEqual(['idle', 'walk', 'run', 'fly']);
+    expect(SKIN_ANIMATIONS.walk.description).toContain('四肢');
+  });
+
+  it('速度越高周期越短，并把异常速度限制在安全范围', () => {
+    expect(getSkinAnimationDurationSeconds('walk', 1)).toBe(0.92);
+    expect(getSkinAnimationDurationSeconds('walk', 2)).toBe(0.46);
+    expect(getSkinAnimationDurationSeconds('run', 0)).toBe(2);
+    expect(getSkinAnimationDurationSeconds('idle', Number.NaN)).toBe(2.8);
   });
 });
