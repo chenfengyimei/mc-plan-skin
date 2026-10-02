@@ -294,6 +294,13 @@ export class LlmStructuredSkinProvider {
 
       inputUnits += lastCompletion.inputUnits;
       outputUnits += lastCompletion.outputUnits;
+      // 先解析、后判拒：思考型模型常在合法 JSON 前加"我无法直接绘制图像…"式开场白，
+      // 只有在解析不出任何蓝图时才把响应定性为拒答，避免前言误杀有效输出。
+      const parsed = parseDraft(lastCompletion.content);
+      if (parsed.success) {
+        draft = parsed.design;
+        break;
+      }
       if (looksLikeRefusal(lastCompletion.content)) {
         return {
           status: 'failed',
@@ -301,12 +308,6 @@ export class LlmStructuredSkinProvider {
           message: '模型拒绝了该创作描述',
           providerCallId: lastCompletion.providerCallId,
         };
-      }
-
-      const parsed = parseDraft(lastCompletion.content);
-      if (parsed.success) {
-        draft = parsed.design;
-        break;
       }
       if (pass === 0) {
         draftPrompt = [
@@ -354,6 +355,18 @@ export class LlmStructuredSkinProvider {
 
         inputUnits += lastCompletion.inputUnits;
         outputUnits += lastCompletion.outputUnits;
+
+        const patched = applyRowPatches(draft, lastCompletion.content);
+        if (patched.success) {
+          draft = patched.design;
+          quality = designFeedback(draft);
+          if (quality.success) {
+            design = quality.design;
+            break;
+          }
+          detailFeedback = quality.feedback;
+          continue;
+        }
         if (looksLikeRefusal(lastCompletion.content)) {
           return {
             status: 'failed',
@@ -362,19 +375,7 @@ export class LlmStructuredSkinProvider {
             providerCallId: lastCompletion.providerCallId,
           };
         }
-
-        const patched = applyRowPatches(draft, lastCompletion.content);
-        if (!patched.success) {
-          detailFeedback = patched.feedback;
-          continue;
-        }
-        draft = patched.design;
-        quality = designFeedback(draft);
-        if (quality.success) {
-          design = quality.design;
-          break;
-        }
-        detailFeedback = quality.feedback;
+        detailFeedback = patched.feedback;
       }
     }
 

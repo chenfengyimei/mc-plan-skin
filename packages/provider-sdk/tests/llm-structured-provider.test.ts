@@ -301,6 +301,15 @@ describe('LlmStructuredSkinProvider', () => {
     expect(result.errorCode).toBe('PROVIDER_CONTENT_REJECTED');
   });
 
+  it('开场白含"无法"等拒答字样但携带合法 JSON 时不被误判为拒答', async () => {
+    const preamble = '抱歉，我无法直接绘制图像，但可以用字符网格表示这份设计：';
+    const result = await providerWith(`${preamble}\n${goodDesignJson}`).generate(request);
+    expect(result.status).toBe('succeeded');
+    if (result.status !== 'succeeded') return;
+    const report = validateSkinImage(result.png, { armModel: 'alex' });
+    expect(report.valid).toBe(true);
+  });
+
   it.each([
     ['rate_limited', 'PROVIDER_RATE_LIMITED'],
     ['timeout', 'PROVIDER_TIMEOUT'],
