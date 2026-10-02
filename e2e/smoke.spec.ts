@@ -1,9 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-/**
- * Standalone 最小纵向链路冒烟（不含预览与下载——公共契约缺口已记录）：
- * 打开网站 → 描述 → 创建会话 → 请求渲染 → worker 处理 → 候选确认 → 会话完成。
- */
+/** Standalone 纵向链路：创建 → 渲染 → 3D 候选预览 → 确认。 */
 test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'MC Plan Skin' })).toBeVisible();
@@ -18,6 +15,22 @@ test('Standalone 最小纵向链路：创建→渲染→确认', async ({ page }
 
   await page.getByRole('button', { name: /请求渲染/ }).click();
   await expect(page.getByTestId('render-0')).toContainText('succeeded', { timeout: 60_000 });
+
+  const preview = page.getByTestId('skin-preview-3d').first();
+  await expect(preview).toBeVisible();
+  await preview.scrollIntoViewIfNeeded();
+  const initialYaw = await preview.getAttribute('data-yaw');
+  const bounds = await preview.boundingBox();
+  expect(bounds).not.toBeNull();
+  if (bounds) {
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + bounds.width / 2 + 72, bounds.y + bounds.height / 2);
+    await page.mouse.up();
+  }
+  await expect.poll(() => preview.getAttribute('data-yaw')).not.toBe(initialYaw);
+  await page.getByRole('button', { name: '重置预览视角' }).first().click();
+  await expect(preview).toHaveAttribute('data-yaw', '-28.0');
 
   await page.getByLabel('成品标题').fill('雪地探险家');
   const confirmButton = page.locator('[data-testid^="confirm-"]').first();

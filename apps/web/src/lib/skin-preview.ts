@@ -1,114 +1,208 @@
-import { PNG } from 'pngjs';
-
 import type { ArmModel } from '@mc-plan/skin-core';
 
-/**
- * 2D 像素预览的解码与合成（纯函数，浏览器与 Node 均可运行）。
- * 输入为已通过 skin-validator 校验的 64×64 PNG 字节；
- * 输出 16×32 正面视角 RGBA 合成图（含第二层透明合成）。
- * 3D 预览库（Q-011 未决）未来实现时替换本模块的调用方即可，
- * SkinPreview 组件接口保持不变。
- */
+export type SkinFaceName = 'top' | 'bottom' | 'left' | 'front' | 'right' | 'back';
 
-export const PREVIEW_WIDTH = 16;
-export const PREVIEW_HEIGHT = 32;
-
-/** 64×64 布局的正面区域（x, y, w, h）。 */
-const FRONT_FACES = {
-  head: { x: 8, y: 8, w: 8, h: 8 },
-  body: { x: 20, y: 20, w: 8, h: 12 },
-  rightArm: { x: 44, y: 20, w: 4, h: 12 },
-  leftArm: { x: 36, y: 52, w: 4, h: 12 },
-  rightLeg: { x: 4, y: 20, w: 4, h: 12 },
-  leftLeg: { x: 20, y: 52, w: 4, h: 12 },
-} as const;
-
-/** 第二层正面区域（与基础部件一一对应）。 */
-const OVERLAY_FACES = {
-  head: { x: 40, y: 8, w: 8, h: 8 },
-  body: { x: 20, y: 36, w: 8, h: 12 },
-  rightArm: { x: 44, y: 36, w: 4, h: 12 },
-  leftArm: { x: 52, y: 52, w: 4, h: 12 },
-  rightLeg: { x: 4, y: 36, w: 4, h: 12 },
-  leftLeg: { x: 4, y: 52, w: 4, h: 12 },
-} as const;
-
-export interface SkinPreviewData {
+export interface SkinUvRect {
+  x: number;
+  y: number;
   width: number;
   height: number;
-  /** 16×32 正面合成 RGBA，预乘不处理，保留原始 alpha。 */
-  pixels: Uint8Array;
-  armModel: ArmModel;
 }
 
-function readPixel(image: PNG, x: number, y: number): [number, number, number, number] {
-  const offset = (y * image.width + x) * 4;
+export type SkinFaceSet = Record<SkinFaceName, SkinUvRect>;
+
+export interface SkinPartDefinition {
+  id: 'head' | 'torso' | 'right-arm' | 'left-arm' | 'right-leg' | 'left-leg';
+  width: number;
+  height: number;
+  depth: number;
+  centerX: number;
+  centerY: number;
+  base: SkinFaceSet;
+  overlay: SkinFaceSet;
+}
+
+export interface SkinPreviewRotation {
+  yaw: number;
+  pitch: number;
+}
+
+export const DEFAULT_SKIN_ROTATION: SkinPreviewRotation = { yaw: -28, pitch: -8 };
+
+const FACE_NAMES: SkinFaceName[] = ['top', 'bottom', 'left', 'front', 'right', 'back'];
+
+type RectTuple = [x: number, y: number, width: number, height: number];
+
+function faceSet(
+  rects: [RectTuple, RectTuple, RectTuple, RectTuple, RectTuple, RectTuple],
+): SkinFaceSet {
+  return Object.fromEntries(
+    rects.map(([x, y, width, height], index) => [FACE_NAMES[index], { x, y, width, height }]),
+  ) as SkinFaceSet;
+}
+
+const HEAD_BASE = faceSet([
+  [8, 0, 8, 8],
+  [16, 0, 8, 8],
+  [0, 8, 8, 8],
+  [8, 8, 8, 8],
+  [16, 8, 8, 8],
+  [24, 8, 8, 8],
+]);
+const HEAD_OVERLAY = faceSet([
+  [40, 0, 8, 8],
+  [48, 0, 8, 8],
+  [32, 8, 8, 8],
+  [40, 8, 8, 8],
+  [48, 8, 8, 8],
+  [56, 8, 8, 8],
+]);
+const TORSO_BASE = faceSet([
+  [20, 16, 8, 4],
+  [28, 16, 8, 4],
+  [16, 20, 4, 12],
+  [20, 20, 8, 12],
+  [28, 20, 4, 12],
+  [32, 20, 8, 12],
+]);
+const TORSO_OVERLAY = faceSet([
+  [20, 32, 8, 4],
+  [28, 32, 8, 4],
+  [16, 36, 4, 12],
+  [20, 36, 8, 12],
+  [28, 36, 4, 12],
+  [32, 36, 8, 12],
+]);
+
+function armFaces(armModel: ArmModel, left: boolean, overlay: boolean): SkinFaceSet {
+  const width = armModel === 'alex' ? 3 : 4;
+  const topX = left ? (overlay ? 52 : 36) : 44;
+  const topY = left ? 48 : overlay ? 32 : 16;
+  const sideX = left ? (overlay ? 48 : 32) : 40;
+  const sideY = left ? 52 : overlay ? 36 : 20;
+  return faceSet([
+    [topX, topY, width, 4],
+    [topX + width, topY, width, 4],
+    [sideX, sideY, 4, 12],
+    [sideX + 4, sideY, width, 12],
+    [sideX + 4 + width, sideY, 4, 12],
+    [sideX + 8 + width, sideY, width, 12],
+  ]);
+}
+
+function legFaces(left: boolean, overlay: boolean): SkinFaceSet {
+  const topX = left ? (overlay ? 4 : 20) : 4;
+  const topY = left ? 48 : overlay ? 32 : 16;
+  const sideX = left ? (overlay ? 0 : 16) : 0;
+  const sideY = left ? 52 : overlay ? 36 : 20;
+  return faceSet([
+    [topX, topY, 4, 4],
+    [topX + 4, topY, 4, 4],
+    [sideX, sideY, 4, 12],
+    [sideX + 4, sideY, 4, 12],
+    [sideX + 8, sideY, 4, 12],
+    [sideX + 12, sideY, 4, 12],
+  ]);
+}
+
+/** Minecraft Java 64×64 皮肤的六个可旋转部件及基础/第二层 UV。 */
+export function getSkinModelParts(armModel: ArmModel): SkinPartDefinition[] {
+  const armWidth = armModel === 'alex' ? 3 : 4;
+  const armCenter = 4 + armWidth / 2;
   return [
-    image.data[offset] ?? 0,
-    image.data[offset + 1] ?? 0,
-    image.data[offset + 2] ?? 0,
-    image.data[offset + 3] ?? 0,
+    {
+      id: 'head',
+      width: 8,
+      height: 8,
+      depth: 8,
+      centerX: 0,
+      centerY: -12,
+      base: HEAD_BASE,
+      overlay: HEAD_OVERLAY,
+    },
+    {
+      id: 'torso',
+      width: 8,
+      height: 12,
+      depth: 4,
+      centerX: 0,
+      centerY: -2,
+      base: TORSO_BASE,
+      overlay: TORSO_OVERLAY,
+    },
+    {
+      id: 'right-arm',
+      width: armWidth,
+      height: 12,
+      depth: 4,
+      centerX: -armCenter,
+      centerY: -2,
+      base: armFaces(armModel, false, false),
+      overlay: armFaces(armModel, false, true),
+    },
+    {
+      id: 'left-arm',
+      width: armWidth,
+      height: 12,
+      depth: 4,
+      centerX: armCenter,
+      centerY: -2,
+      base: armFaces(armModel, true, false),
+      overlay: armFaces(armModel, true, true),
+    },
+    {
+      id: 'right-leg',
+      width: 4,
+      height: 12,
+      depth: 4,
+      centerX: -2,
+      centerY: 10,
+      base: legFaces(false, false),
+      overlay: legFaces(false, true),
+    },
+    {
+      id: 'left-leg',
+      width: 4,
+      height: 12,
+      depth: 4,
+      centerX: 2,
+      centerY: 10,
+      base: legFaces(true, false),
+      overlay: legFaces(true, true),
+    },
   ];
 }
 
-function writePixel(
-  target: Uint8Array,
-  x: number,
-  y: number,
-  pixel: [number, number, number, number],
-): void {
-  const offset = (y * PREVIEW_WIDTH + x) * 4;
-  target[offset] = pixel[0];
-  target[offset + 1] = pixel[1];
-  target[offset + 2] = pixel[2];
-  target[offset + 3] = pixel[3];
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
-/** alpha 透明合成：overlay 像素在 alpha>0 时覆盖基础像素。 */
-function blendOver(
-  base: [number, number, number, number],
-  overlay: [number, number, number, number],
-): [number, number, number, number] {
-  if (overlay[3] === 0) {
-    return base;
-  }
-  return overlay;
+/** 将指针位移转换成稳定旋转；俯仰限幅，水平旋转不截断。 */
+export function rotateSkinPreview(
+  current: SkinPreviewRotation,
+  deltaX: number,
+  deltaY: number,
+): SkinPreviewRotation {
+  return { yaw: current.yaw + deltaX * 0.55, pitch: clamp(current.pitch - deltaY * 0.4, -32, 32) };
 }
 
-/** 解码 64×64 皮肤并合成 16×32 正面预览。尺寸或解码错误直接抛错（上游已校验）。 */
-export function decodeSkinForPreview(bytes: Uint8Array, armModel: ArmModel): SkinPreviewData {
-  const image = PNG.sync.read(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-  if (image.width !== 64 || image.height !== 64) {
-    throw new Error(`预览解码要求 64×64 皮肤，实际 ${image.width}×${image.height}`);
+/** 无指针设备使用的方向键旋转。 */
+export function rotateSkinPreviewByKey(
+  current: SkinPreviewRotation,
+  key: string,
+): SkinPreviewRotation {
+  switch (key) {
+    case 'ArrowLeft':
+      return { ...current, yaw: current.yaw - 12 };
+    case 'ArrowRight':
+      return { ...current, yaw: current.yaw + 12 };
+    case 'ArrowUp':
+      return { ...current, pitch: clamp(current.pitch + 8, -32, 32) };
+    case 'ArrowDown':
+      return { ...current, pitch: clamp(current.pitch - 8, -32, 32) };
+    case 'Home':
+      return { ...DEFAULT_SKIN_ROTATION };
+    default:
+      return current;
   }
-
-  const pixels = new Uint8Array(PREVIEW_WIDTH * PREVIEW_HEIGHT * 4);
-  const armWidth = armModel === 'alex' ? 3 : 4;
-
-  const drawPart = (
-    part: { x: number; y: number; w: number; h: number },
-    overlay: { x: number; y: number; w: number; h: number },
-    targetX: number,
-    targetY: number,
-    width: number,
-  ): void => {
-    for (let row = 0; row < part.h; row += 1) {
-      for (let column = 0; column < width; column += 1) {
-        const basePixel = readPixel(image, part.x + column, part.y + row);
-        const overlayPixel = readPixel(image, overlay.x + column, overlay.y + row);
-        writePixel(pixels, targetX + column, targetY + row, blendOver(basePixel, overlayPixel));
-      }
-    }
-  };
-
-  // 正面视角：头（4..11, 0..7）、右臂（0.., 8..19）、身（4..11, 8..19）、
-  // 左臂（12.., 8..19）、右腿（4..7, 20..31）、左腿（8..11, 20..31）
-  drawPart(FRONT_FACES.head, OVERLAY_FACES.head, 4, 0, 8);
-  drawPart(FRONT_FACES.rightArm, OVERLAY_FACES.rightArm, 4 - armWidth, 8, armWidth);
-  drawPart(FRONT_FACES.body, OVERLAY_FACES.body, 4, 8, 8);
-  drawPart(FRONT_FACES.leftArm, OVERLAY_FACES.leftArm, 12, 8, armWidth);
-  drawPart(FRONT_FACES.rightLeg, OVERLAY_FACES.rightLeg, 4, 20, 4);
-  drawPart(FRONT_FACES.leftLeg, OVERLAY_FACES.leftLeg, 8, 20, 4);
-
-  return { width: PREVIEW_WIDTH, height: PREVIEW_HEIGHT, pixels, armModel };
 }

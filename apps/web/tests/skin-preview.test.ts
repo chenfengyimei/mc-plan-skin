@@ -1,70 +1,81 @@
 import { describe, expect, it } from 'vitest';
-import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
-import { PNG } from 'pngjs';
 
-import { PREVIEW_HEIGHT, PREVIEW_WIDTH, decodeSkinForPreview } from '../src/lib/skin-preview';
+import {
+  DEFAULT_SKIN_ROTATION,
+  getSkinModelParts,
+  rotateSkinPreview,
+  rotateSkinPreviewByKey,
+} from '../src/lib/skin-preview';
 
-function pixelAt(data: Uint8Array, x: number, y: number): [number, number, number, number] {
-  const offset = (y * PREVIEW_WIDTH + x) * 4;
-  return [data[offset] ?? 0, data[offset + 1] ?? 0, data[offset + 2] ?? 0, data[offset + 3] ?? 0];
-}
-
-describe('2D 预览解码与合成', () => {
-  it('Steve fixture 合成 16×32 正面视图，基础部件正确落位', async () => {
-    const bytes = await loadFixtureBytes('valid-steve');
-    const preview = decodeSkinForPreview(bytes, 'steve');
-    expect(preview.width).toBe(PREVIEW_WIDTH);
-    expect(preview.height).toBe(PREVIEW_HEIGHT);
-    expect(preview.pixels).toHaveLength(PREVIEW_WIDTH * PREVIEW_HEIGHT * 4);
-
-    // 头部正面 (9,9) → 合成 (5,1)：皮肤色（帽子 overlay 涂在 (6..9,2..5)，不覆盖此处）
-    expect(pixelAt(preview.pixels, 5, 1)).toEqual([232, 190, 152, 255]);
-    // 身体正面 (21,24) → 合成 (5,12)：衬衫色（外套 overlay 恰好涂在 (21,37)，避开）
-    expect(pixelAt(preview.pixels, 5, 12)).toEqual([42, 98, 178, 255]);
-    // 右腿正面 (6,28) → 合成 (6,28)：裤色（裤子 overlay 涂在 y22..24，不覆盖）
-    expect(pixelAt(preview.pixels, 6, 28)).toEqual([52, 60, 76, 255]);
+describe('3D 皮肤预览几何', () => {
+  it('Steve 使用六个完整部件和规范正反面 UV', () => {
+    const parts = getSkinModelParts('steve');
+    expect(parts.map((part) => part.id)).toEqual([
+      'head',
+      'torso',
+      'right-arm',
+      'left-arm',
+      'right-leg',
+      'left-leg',
+    ]);
+    expect(parts.find((part) => part.id === 'head')?.base.front).toEqual({
+      x: 8,
+      y: 8,
+      width: 8,
+      height: 8,
+    });
+    expect(parts.find((part) => part.id === 'head')?.base.back).toEqual({
+      x: 24,
+      y: 8,
+      width: 8,
+      height: 8,
+    });
+    expect(parts.find((part) => part.id === 'torso')?.overlay.front).toEqual({
+      x: 20,
+      y: 36,
+      width: 8,
+      height: 12,
+    });
   });
 
-  it('正面 overlay 覆盖基础像素：帽子、外套与右袖渲染第二层颜色', async () => {
-    const bytes = await loadFixtureBytes('valid-steve');
-    const preview = decodeSkinForPreview(bytes, 'steve');
-
-    // 帽子正面 (42,10) → 合成头 (6,2)：红色 overlay
-    expect(pixelAt(preview.pixels, 6, 2)).toEqual([200, 60, 60, 255]);
-    // 外套正面 (22,38) → 合成身 (6,10)：蓝色 overlay
-    expect(pixelAt(preview.pixels, 6, 10)).toEqual([60, 160, 200, 255]);
-    // 右袖正面 (44,38) → 合成右臂 (0,10)（Steve armWidth=4）
-    expect(pixelAt(preview.pixels, 0, 10)).toEqual([90, 200, 90, 255]);
+  it('Alex 双臂缩为 3px，并维持关于身体中心对称', () => {
+    const parts = getSkinModelParts('alex');
+    const right = parts.find((part) => part.id === 'right-arm');
+    const left = parts.find((part) => part.id === 'left-arm');
+    expect(right?.width).toBe(3);
+    expect(left?.width).toBe(3);
+    expect(right?.centerX).toBe(-5.5);
+    expect(left?.centerX).toBe(5.5);
+    expect(right?.base.front).toEqual({ x: 44, y: 20, width: 3, height: 12 });
+    expect(left?.overlay.back).toEqual({ x: 59, y: 52, width: 3, height: 12 });
   });
 
-  it('Alex 手臂 3px：右臂槽外侧列为透明；Steve 同列为不透明', async () => {
-    const alexBytes = await loadFixtureBytes('valid-alex');
-    const steveBytes = await loadFixtureBytes('valid-steve');
-    const alex = decodeSkinForPreview(alexBytes, 'alex');
-    const steve = decodeSkinForPreview(steveBytes, 'steve');
+  it('所有基础层与第二层 UV 均位于 64×64 图内', () => {
+    for (const model of ['steve', 'alex'] as const) {
+      for (const part of getSkinModelParts(model)) {
+        for (const layer of [part.base, part.overlay]) {
+          for (const rect of Object.values(layer)) {
+            expect(rect.x).toBeGreaterThanOrEqual(0);
+            expect(rect.y).toBeGreaterThanOrEqual(0);
+            expect(rect.x + rect.width).toBeLessThanOrEqual(64);
+            expect(rect.y + rect.height).toBeLessThanOrEqual(64);
+          }
+        }
+      }
+    }
+  });
+});
 
-    const alexOuter = pixelAt(alex.pixels, 0, 10);
-    expect(alexOuter[3]).toBe(0);
-    const steveOuter = pixelAt(steve.pixels, 0, 10);
-    expect(steveOuter[3]).toBe(255);
+describe('3D 皮肤预览旋转', () => {
+  it('拖动改变 yaw 并把 pitch 限制在可读范围', () => {
+    expect(rotateSkinPreview(DEFAULT_SKIN_ROTATION, 20, -200)).toEqual({ yaw: -17, pitch: 32 });
+    expect(rotateSkinPreview(DEFAULT_SKIN_ROTATION, -20, 200)).toEqual({ yaw: -39, pitch: -32 });
   });
 
-  it('左腿从规范第二层 UV 区域合成 overlay，而不是重复读取基础层', () => {
-    const image = new PNG({ width: 64, height: 64 });
-    image.data.fill(0);
-    const setPixel = (x: number, y: number, color: [number, number, number, number]) => {
-      const offset = (y * image.width + x) * 4;
-      image.data.set(color, offset);
-    };
-    setPixel(20, 52, [180, 40, 40, 255]); // 左腿基础层正面
-    setPixel(4, 52, [40, 200, 100, 255]); // 左腿第二层正面
-
-    const preview = decodeSkinForPreview(new Uint8Array(PNG.sync.write(image)), 'steve');
-    expect(pixelAt(preview.pixels, 8, 20)).toEqual([40, 200, 100, 255]);
-  });
-
-  it('非 64×64 输入被拒绝', async () => {
-    const bytes = await loadFixtureBytes('invalid-32x32');
-    expect(() => decodeSkinForPreview(bytes, 'steve')).toThrow(/64×64/);
+  it('方向键可旋转，Home 恢复默认视角', () => {
+    const rotated = rotateSkinPreviewByKey(DEFAULT_SKIN_ROTATION, 'ArrowRight');
+    expect(rotated.yaw).toBe(-16);
+    expect(rotateSkinPreviewByKey(rotated, 'Home')).toEqual(DEFAULT_SKIN_ROTATION);
+    expect(rotateSkinPreviewByKey(rotated, 'Enter')).toBe(rotated);
   });
 });
