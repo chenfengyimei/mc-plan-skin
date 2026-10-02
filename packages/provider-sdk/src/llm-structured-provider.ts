@@ -282,7 +282,6 @@ export class LlmStructuredSkinProvider {
         lastCompletion = await this.#client.complete({
           system: DESIGN_SYSTEM_PROMPT,
           user: draftPrompt,
-          timeoutMs: 30_000,
         });
       } catch (error) {
         return providerFailure(error);
@@ -341,7 +340,6 @@ export class LlmStructuredSkinProvider {
           lastCompletion = await this.#client.complete({
             system: DETAIL_SYSTEM_PROMPT,
             user: detailPrompt,
-            timeoutMs: 30_000,
           });
         } catch {
           // 草图已经通过尺寸、字符与调色板协议；精修服务短暂不可用时，

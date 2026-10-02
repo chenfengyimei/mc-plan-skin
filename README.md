@@ -26,6 +26,9 @@ pnpm start:real    # 使用 apps/worker/.env 中的 LLM 配置进行真实逐像
 
 `start:real` 会强制选择 `SKIN_PROVIDER=llm`；缺少 `SKIN_LLM_BASE_URL`、`SKIN_LLM_API_KEY`
 或 `SKIN_LLM_MODEL` 时启动失败，不会静默退回固定样例。密钥文件已被 Git 忽略。
+可选调优（同样写在 `apps/worker/.env`）：`SKIN_LLM_TIMEOUT_MS`（单次 LLM 调用超时毫秒数，默认
+30000；思考型模型生成大体积蓝图时按厂商实测调大）；`SKIN_LLM_REASONING_EFFORT`（透传 OpenAI
+o 系列同名扩展字段，控制思考型模型的推理深度，例如智谱 GLM-5.3 的 low/high/max）。
 
 详见 [AGENTS.md](AGENTS.md) 的真实验收命令与 [docs/STATUS.md](docs/STATUS.md)。
 

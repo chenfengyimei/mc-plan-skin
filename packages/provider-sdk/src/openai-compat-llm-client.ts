@@ -8,6 +8,8 @@ export class OpenAiCompatLlmClient implements LlmClient {
       apiKey: string;
       model: string;
       defaultTimeoutMs?: number;
+      /** OpenAI o 系列同名的推理力度扩展；GLM-5.3 等思考型模型用它控制思考深度。 */
+      reasoningEffort?: string;
     },
   ) {}
 
@@ -31,6 +33,7 @@ export class OpenAiCompatLlmClient implements LlmClient {
           { role: 'user', content: options.user },
         ],
         temperature: 0.4,
+        ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });

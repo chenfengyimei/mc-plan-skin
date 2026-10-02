@@ -39,6 +39,12 @@ const conversationRetentionDaysSchema = z.coerce.number().int().min(1).max(3650)
 
 const candidateRetentionHoursSchema = z.coerce.number().int().min(1).max(720).default(24);
 
+/**
+ * 单次 LLM 调用超时（毫秒）。默认 30 秒适合快速端点；逐像素蓝图输出体积大、
+ * 推理型模型需要更长时间时由部署者按厂商实测调整。
+ */
+const llmTimeoutMsSchema = z.coerce.number().int().min(1_000).max(600_000).default(30_000);
+
 const baseConfigSchema = z.object({
   SKIN_RUN_MODE: runModeSchema,
   SKIN_ENV: envSchema,
@@ -110,6 +116,15 @@ export const workerConfigSchema = baseConfigSchema
     SKIN_LLM_BASE_URL: z.string().optional(),
     SKIN_LLM_API_KEY: z.string().optional(),
     SKIN_LLM_MODEL: z.string().optional(),
+    SKIN_LLM_TIMEOUT_MS: llmTimeoutMsSchema,
+    /** OpenAI o 系列同名的推理力度透传（low/medium/high/max 等，各厂商取值不同，不做枚举约束）。 */
+    SKIN_LLM_REASONING_EFFORT: z
+      .string()
+      .trim()
+      .min(1)
+      .max(16)
+      .optional()
+      .transform((value) => (value === '' ? undefined : value)),
   })
   .superRefine((value, ctx) => {
     requireOfficialCoreUrl(value, ctx);
@@ -154,6 +169,8 @@ export type WorkerConfig = {
   redisUrl: string;
   candidateStorageRoot: string;
   provider: WorkerProvider;
+  llmTimeoutMs: number;
+  llmReasoningEffort?: string | undefined;
   llm: {
     baseUrl: string;
     apiKey: string;
@@ -210,6 +227,8 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     redisUrl: value.SKIN_REDIS_URL,
     candidateStorageRoot: value.SKIN_CANDIDATE_STORAGE_ROOT,
     provider: value.SKIN_PROVIDER,
+    llmTimeoutMs: value.SKIN_LLM_TIMEOUT_MS,
+    llmReasoningEffort: value.SKIN_LLM_REASONING_EFFORT,
     llm:
       value.SKIN_PROVIDER === 'llm'
         ? {

@@ -50,6 +50,8 @@ function createProvider(): ProviderAdapter {
       result: 'success',
       provider: 'llm-structured',
       llm_model: config.llm.model,
+      llm_timeout_ms: config.llmTimeoutMs,
+      ...(config.llmReasoningEffort ? { llm_reasoning_effort: config.llmReasoningEffort } : {}),
     });
     return new LlmStructuredSkinProvider({
       environment: config.env,
@@ -57,6 +59,8 @@ function createProvider(): ProviderAdapter {
         baseUrl: config.llm.baseUrl,
         apiKey: config.llm.apiKey,
         model: config.llm.model,
+        defaultTimeoutMs: config.llmTimeoutMs,
+        ...(config.llmReasoningEffort ? { reasoningEffort: config.llmReasoningEffort } : {}),
       }),
     });
   }

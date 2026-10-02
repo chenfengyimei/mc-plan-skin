@@ -122,6 +122,29 @@ describe('worker 配置', () => {
     expect(config.redisUrl).toBe('redis://127.0.0.1:6379');
     expect(config.candidateStorageRoot).toBe('./data/candidates');
   });
+
+  it('LLM 调用超时默认 30 秒且可通过 SKIN_LLM_TIMEOUT_MS 调整', () => {
+    const base = {
+      SKIN_DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/skin',
+      SKIN_REDIS_URL: 'redis://127.0.0.1:6379',
+    };
+    expect(loadWorkerConfig(base).llmTimeoutMs).toBe(30_000);
+    expect(loadWorkerConfig({ ...base, SKIN_LLM_TIMEOUT_MS: '180000' }).llmTimeoutMs).toBe(180_000);
+    expect(() => loadWorkerConfig({ ...base, SKIN_LLM_TIMEOUT_MS: '100' })).toThrow(ConfigError);
+    expect(() => loadWorkerConfig({ ...base, SKIN_LLM_TIMEOUT_MS: '700000' })).toThrow(ConfigError);
+  });
+
+  it('SKIN_LLM_REASONING_EFFORT 默认不设置且可透传', () => {
+    const base = {
+      SKIN_DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/skin',
+      SKIN_REDIS_URL: 'redis://127.0.0.1:6379',
+    };
+    expect(loadWorkerConfig(base).llmReasoningEffort).toBeUndefined();
+    expect(loadWorkerConfig({ ...base, SKIN_LLM_REASONING_EFFORT: 'low' }).llmReasoningEffort).toBe(
+      'low',
+    );
+    expect(() => loadWorkerConfig({ ...base, SKIN_LLM_REASONING_EFFORT: '' })).toThrow(ConfigError);
+  });
 });
 
 describe('跨配置规则', () => {
