@@ -332,4 +332,98 @@ describe('LlmStructuredSkinProvider', () => {
     const result = await providerWith(`${goodDesignJson}\n补充说明：{}`).generate(request);
     expect(result.status).toBe('succeeded');
   });
+
+  it('设计阶段 system prompt 携带描述词落实、部位锚定与正背面一致性约束', async () => {
+    const systems: string[] = [];
+    const provider = new LlmStructuredSkinProvider({
+      environment: 'test',
+      client: {
+        complete: async (options) => {
+          systems.push(options.system);
+          return {
+            content: goodDesignJson,
+            providerCallId: 'resp-123',
+            inputUnits: 100,
+            outputUnits: 50,
+          };
+        },
+      },
+    });
+    await provider.generate(request);
+    expect(systems.length).toBeGreaterThanOrEqual(1);
+    const design = systems[0];
+    expect(design).toContain('逐词收集用户描述中的颜色词与服饰主题词');
+    expect(design).toContain('冷色场景用冷色系、暖色场景用暖色系');
+    expect(design).toContain('围巾与项链画在 head 最下 1-2 行和 torso 最上 1-2 行的颈部环带');
+    expect(design).toContain('帽子与头饰画在 head 顶部 1-3 行');
+    expect(design).toContain('back 是 front 的真实背面');
+    expect(design).toContain('overlay 与基础层的外边缘必须对齐');
+    expect(design).toContain('位于正确部位行带');
+    expect(design).toContain('配色服务于描述场景而不是通用模板');
+  });
+
+  it('多个不同主题的描述都逐字进入请求并要求逐词落实到像素', async () => {
+    const themes = [
+      '熔岩群岛的火焰法师，赤红斗篷与焦黑护腕',
+      '深海打捞的机械工程师，青灰工装与荧光橙指示灯',
+      '花田里的吟游诗人，薄荷绿长袍与藤蔓花环',
+    ] as const;
+    for (const [index, theme] of themes.entries()) {
+      let user = '';
+      const provider = new LlmStructuredSkinProvider({
+        environment: 'test',
+        client: {
+          complete: async (options) => {
+            user = options.user;
+            return {
+              content: goodDesignJson,
+              providerCallId: `theme-${index}`,
+              inputUnits: 10,
+              outputUnits: 5,
+            };
+          },
+        },
+      });
+      const result = await provider.generate({ ...request, prompt: theme });
+      expect(result.status).toBe('succeeded');
+      if (result.status !== 'succeeded') return;
+      expect(result.providerCallId).toBe(`llm-theme-${index}`);
+      expect(user).toContain(theme);
+      expect(user).toContain('描述中的每个颜色词与服饰词都必须真实出现在最终像素中');
+    }
+  });
+
+  it('像素精修阶段的 system prompt 携带部位锚定与主题色约束', async () => {
+    const flat = JSON.parse(goodDesignJson) as Record<string, unknown>;
+    flat.overlay_front = {
+      head: clear(8, 8),
+      torso: clear(8, 12),
+      right_arm: clear(4, 12),
+      left_arm: clear(4, 12),
+      right_leg: clear(4, 12),
+      left_leg: clear(4, 12),
+    };
+    const systems: string[] = [];
+    const provider = new LlmStructuredSkinProvider({
+      environment: 'test',
+      client: {
+        complete: async (options) => {
+          systems.push(options.system);
+          if (systems.length > 1) throw new Error('detail service unavailable');
+          return {
+            content: JSON.stringify(flat),
+            providerCallId: 'draft-1',
+            inputUnits: 100,
+            outputUnits: 50,
+          };
+        },
+      },
+    });
+    const result = await provider.generate(request);
+    expect(result.status).toBe('succeeded');
+    expect(systems.length).toBe(2);
+    expect(systems[1]).toContain('补丁必须遵守部位锚定');
+    expect(systems[1]).toContain('不得把描述的主题色替换成通用配色');
+    expect(systems[1]).toContain('front 与 overlay 的外边缘必须对齐');
+  });
 });
