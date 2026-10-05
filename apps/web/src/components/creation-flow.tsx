@@ -51,10 +51,79 @@ const ERROR_MESSAGES: Record<string, string> = {
   PROVIDER_REJECTED: '模型拒绝了这次生成请求，请调整描述中的敏感或冲突内容。',
   SKIN_VALIDATION_FAILED: '模型返回的皮肤没有通过 64×64 双层结构校验，本次不会显示为有效候选。',
   MISSING_SECOND_LAYER: '候选缺少有效第二层细节，已被校验器拒绝。',
+  SKIN_JOB_NOT_FOUND: '任务记录已不存在（可能已过保留期或已被清理）。',
 };
 
 function newIdempotencyKey(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * 刷新恢复（仅依赖既有公共接口）：把会话与任务清单持久化在 localStorage；
+ * 恢复时用 GET /v1/jobs/{id} 重轮询未终态任务，候选字节经本地 demo 预览路由重载。
+ * 服务端仍是唯一真相；本地只保存恢复所需的引用与表单草稿。
+ */
+const SESSION_STORAGE_KEY = 'pixel-foundry-session-v1';
+
+interface PersistedSession {
+  version: 1;
+  savedAt: string;
+  conversation: ConversationInfo;
+  renders: RenderEntry[];
+  selectedCandidateId: string | null;
+  title: string;
+  description: string;
+  finalizeJobId: string | null;
+  finalizeStatus: JobStatus | null;
+}
+
+function isRenderEntry(value: unknown): value is RenderEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const entry = value as Partial<RenderEntry>;
+  return (
+    typeof entry.jobId === 'string' &&
+    (entry.status === 'queued' ||
+      entry.status === 'running' ||
+      entry.status === 'succeeded' ||
+      entry.status === 'failed' ||
+      entry.status === 'cancelled') &&
+    (entry.candidateId === null || typeof entry.candidateId === 'string') &&
+    (entry.errorCode === null || typeof entry.errorCode === 'string') &&
+    (entry.armModel === 'steve' || entry.armModel === 'alex')
+  );
+}
+
+function readPersistedSession(): PersistedSession | null {
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedSession;
+    if (
+      parsed.version !== 1 ||
+      !parsed.conversation ||
+      typeof parsed.conversation.conversation_id !== 'string' ||
+      typeof parsed.conversation.expires_at !== 'string' ||
+      !Array.isArray(parsed.renders) ||
+      !parsed.renders.every((entry) => isRenderEntry(entry))
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedSession(session: PersistedSession | null): void {
+  try {
+    if (session === null) {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    }
+  } catch {
+    // 私密模式或配额受限时刷新恢复不可用；不影响当前创作流程本身。
+  }
 }
 
 async function postJson(
@@ -132,6 +201,8 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -139,6 +210,12 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
     return () => {
       for (const timer of current) clearTimeout(timer);
     };
+  }, []);
+
+  // 会话保留期提示用的低频时钟；状态真相仍在服务端。
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
   }, []);
 
   const pollJob = useCallback(
@@ -150,6 +227,12 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
         try {
           const response = await fetch(`/api/v1/jobs/${jobId}`);
           if (!response.ok) {
+            if (response.status === 404) {
+              // 任务行已不存在（保留期清理或记录缺失）：作为终态呈现，不再轮询。
+              onUpdate('failed', null, 'SKIN_JOB_NOT_FOUND');
+              setError(errorMessage('SKIN_JOB_NOT_FOUND'));
+              return;
+            }
             setError(`任务查询失败（${response.status}）`);
             return;
           }
@@ -185,6 +268,76 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
       // 候选已经安全保存；预览路由短暂失败不改变任务状态。
     }
   }, []);
+
+  // 刷新恢复：仅挂载时执行；未终态任务恢复轮询，已完成候选重载预览字节。
+  const restoreSession = useCallback((): boolean => {
+    const persisted = readPersistedSession();
+    if (!persisted) return false;
+    setConversation(persisted.conversation);
+    setRenders(persisted.renders);
+    setSelectedCandidateId(persisted.selectedCandidateId);
+    setTitle(persisted.title);
+    setDescription(persisted.description);
+    setFinalizeJobId(persisted.finalizeJobId);
+    setFinalizeStatus(persisted.finalizeStatus);
+    for (const entry of persisted.renders) {
+      if (entry.status === 'queued' || entry.status === 'running') {
+        void pollJob(entry.jobId, (status, candidateId, renderErrorCode) => {
+          setRenders((previous) =>
+            previous.map((current) =>
+              current.jobId === entry.jobId
+                ? { ...current, status, candidateId, errorCode: renderErrorCode }
+                : current,
+            ),
+          );
+          if (status === 'succeeded' && candidateId) {
+            setSelectedCandidateId(candidateId);
+            void loadPreview(candidateId);
+          }
+        });
+      } else if (entry.candidateId) {
+        void loadPreview(entry.candidateId);
+      }
+    }
+    if (
+      persisted.finalizeJobId &&
+      (persisted.finalizeStatus === 'queued' || persisted.finalizeStatus === 'running')
+    ) {
+      void pollJob(persisted.finalizeJobId, (status, _candidateId, finalizeErrorCode) => {
+        setFinalizeStatus(status);
+        if (status === 'failed') setError(errorMessage(finalizeErrorCode));
+      });
+    }
+    return true;
+  }, [pollJob, loadPreview]);
+
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
+
+  // 会话存在即持续同步本地快照，供刷新后恢复。
+  useEffect(() => {
+    if (!conversation) return;
+    writePersistedSession({
+      version: 1,
+      savedAt: new Date().toISOString(),
+      conversation,
+      renders,
+      selectedCandidateId,
+      title,
+      description,
+      finalizeJobId,
+      finalizeStatus,
+    });
+  }, [
+    conversation,
+    renders,
+    selectedCandidateId,
+    title,
+    description,
+    finalizeJobId,
+    finalizeStatus,
+  ]);
 
   const startConversation = useCallback(async (): Promise<void> => {
     if (initialInput.trim().length === 0) {
@@ -294,6 +447,20 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
     [conversation, title, description, pollJob],
   );
 
+  const resetSession = useCallback((): void => {
+    writePersistedSession(null);
+    setConversation(null);
+    setRenders([]);
+    setPreviewBytes({});
+    setSelectedCandidateId(null);
+    setFinalizeJobId(null);
+    setFinalizeStatus(null);
+    setCompareMode(false);
+    setTitle('');
+    setDescription('');
+    setError(null);
+  }, []);
+
   const candidates = useMemo(
     () =>
       renders
@@ -318,6 +485,28 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const currentStep =
     finalizeStatus === 'succeeded' ? 4 : candidates.length > 0 ? 3 : conversation ? 2 : 1;
   const attemptCount = Math.max(conversation?.attempts_used ?? 0, renders.length);
+  // 展示层派生：确认成功即视为 completed；到期由本地时钟推断，服务端仍是最终裁决。
+  const sessionStatus =
+    finalizeStatus === 'succeeded' ? 'completed' : (conversation?.status ?? 'active');
+  const sessionExpired = conversation ? now >= Date.parse(conversation.expires_at) : false;
+  const rendersLocked = sessionStatus !== 'active' || sessionExpired;
+
+  // 确认成功后下载成品：字节来自已通过最终校验的候选 PNG（与 worker 存储的成品内容一致）。
+  // 这是 Standalone 本地下载，不发明公共下载端点；公共契约缺口仍按记录由 Contracts 先行补全。
+  const downloadFinal = useCallback((): void => {
+    if (!selectedCandidate) return;
+    const bytes = previewBytes[selectedCandidate.candidateId];
+    if (!bytes) return;
+    const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.trim() || 'minecraft-skin'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [selectedCandidate, previewBytes, title]);
 
   return (
     <section className="studio-workflow" aria-label="AI 皮肤创作工作台">
@@ -449,7 +638,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                   <b>
                     {attemptCount}/{conversation.attempts_limit}
                   </b>
-                  <span>状态：{conversation.status} · 已用渲染</span>
+                  <span>状态：{sessionStatus} · 已用渲染</span>
                 </div>
                 <div>
                   <b>{conversation.attempts_limit - attemptCount}</b>
@@ -460,6 +649,16 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                   <span>自动清理</span>
                 </div>
               </div>
+              {sessionExpired && sessionStatus === 'active' && (
+                <p className="session-expired-note">
+                  会话已超过保留期，不能再发起新渲染；可开始新会话。
+                </p>
+              )}
+              {rendersLocked && (
+                <button type="button" className="session-reset" onClick={resetSession}>
+                  开始新会话
+                </button>
+              )}
             </section>
 
             <section className="editor-card panel">
@@ -513,7 +712,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
               <button
                 className="primary-button render-button"
                 type="button"
-                disabled={busy || renders.length >= conversation.attempts_limit}
+                disabled={busy || rendersLocked || renders.length >= conversation.attempts_limit}
                 onClick={() => void requestRender()}
               >
                 {busy ? (
@@ -601,37 +800,97 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
 
             {selectedCandidate ? (
               <>
-                <ul data-testid="candidate-list" className="candidate-list" aria-label="候选切换">
-                  {candidates.map((candidate) => (
-                    <li key={candidate.candidateId}>
-                      <button
-                        type="button"
-                        className={
-                          candidate.candidateId === selectedCandidate.candidateId ? 'is-active' : ''
-                        }
-                        onClick={() => setSelectedCandidateId(candidate.candidateId)}
-                      >
-                        <span>候选 0{candidate.attempt}</span>
-                        <small>{candidate.candidateId.slice(0, 8)}</small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className="candidate-item">
-                  {selectedPreviewBytes ? (
-                    <SkinPreview
-                      bytes={selectedPreviewBytes}
-                      armModel={selectedCandidate.armModel}
-                      scale={7}
-                    />
-                  ) : (
-                    <div className="preview-loading">
-                      <i />
-                      <strong>正在装配 3D 预览</strong>
-                      <span>读取已验证的 64×64 候选……</span>
-                    </div>
+                <div className="workspace-toolbar">
+                  <ul data-testid="candidate-list" className="candidate-list" aria-label="候选切换">
+                    {candidates.map((candidate) => (
+                      <li key={candidate.candidateId}>
+                        <button
+                          type="button"
+                          className={
+                            candidate.candidateId === selectedCandidate.candidateId
+                              ? 'is-active'
+                              : ''
+                          }
+                          onClick={() => setSelectedCandidateId(candidate.candidateId)}
+                        >
+                          <span>候选 0{candidate.attempt}</span>
+                          <small>{candidate.candidateId.slice(0, 8)}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {candidates.length >= 2 && (
+                    <button
+                      type="button"
+                      className="compare-toggle"
+                      aria-pressed={compareMode}
+                      onClick={() => setCompareMode((current) => !current)}
+                    >
+                      {compareMode ? '返回单候选检查' : '并排对比候选'}
+                    </button>
                   )}
                 </div>
+                {compareMode ? (
+                  <div
+                    className="candidate-compare"
+                    data-testid="candidate-compare"
+                    aria-label="候选并排对比"
+                  >
+                    {candidates.map((candidate) => {
+                      const bytes = previewBytes[candidate.candidateId];
+                      return (
+                        <figure
+                          key={candidate.candidateId}
+                          className={`candidate-compare-item${
+                            candidate.candidateId === selectedCandidate.candidateId
+                              ? ' is-active'
+                              : ''
+                          }`}
+                        >
+                          <figcaption>
+                            <span>
+                              候选 0{candidate.attempt} · {candidate.armModel.toUpperCase()}
+                            </span>
+                            <button
+                              type="button"
+                              aria-pressed={candidate.candidateId === selectedCandidate.candidateId}
+                              onClick={() => setSelectedCandidateId(candidate.candidateId)}
+                            >
+                              {candidate.candidateId === selectedCandidate.candidateId
+                                ? '当前确认对象'
+                                : '选为确认对象'}
+                            </button>
+                          </figcaption>
+                          {bytes ? (
+                            <SkinPreview bytes={bytes} armModel={candidate.armModel} scale={4} />
+                          ) : (
+                            <div className="preview-loading">
+                              <i />
+                              <strong>正在装配 3D 预览</strong>
+                              <span>读取已验证的 64×64 候选……</span>
+                            </div>
+                          )}
+                        </figure>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="candidate-item">
+                    {selectedPreviewBytes ? (
+                      <SkinPreview
+                        bytes={selectedPreviewBytes}
+                        armModel={selectedCandidate.armModel}
+                        scale={7}
+                      />
+                    ) : (
+                      <div className="preview-loading">
+                        <i />
+                        <strong>正在装配 3D 预览</strong>
+                        <span>读取已验证的 64×64 候选……</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="finalize-panel">
                   <div className="compact-heading">
@@ -666,13 +925,13 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                   <div className="finalize-action">
                     <p>
                       <strong>确认后会再次执行结构校验</strong>
-                      <span>最终下载等待公共契约补全；当前先完成 Standalone 定稿。</span>
+                      <span>确认成功后即可下载已通过最终校验的 64×64 PNG。</span>
                     </p>
                     <button
                       className="primary-button"
                       type="button"
                       data-testid={`confirm-${selectedCandidate.candidateId.slice(0, 8)}`}
-                      disabled={busy || finalizeJobId !== null}
+                      disabled={busy || finalizeJobId !== null || rendersLocked}
                       onClick={() => void finalize(selectedCandidate.candidateId)}
                     >
                       确认这个候选 <span>→</span>
@@ -699,7 +958,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                   <p>
                     {renders.length > 0
                       ? '完成构图、UV 映射和双层校验后，3D 角色会自动出现在检查台。'
-                      : '在左侧提交描述。有效候选生成后，你可以旋转角色、播放动作并检查每一个面。'}
+                      : '完善描述并发起渲染。有效候选生成后，你可以旋转角色、播放动作并检查每一个面。'}
                   </p>
                 </div>
               </div>
@@ -713,7 +972,25 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                     确认任务：{finalizeStatus ? STATUS_LABELS[finalizeStatus] : '等待处理'}
                   </strong>
                   {finalizeStatus === 'succeeded' && (
-                    <p data-testid="finalize-done">成品已在 Standalone 模式完成确认。</p>
+                    <>
+                      <p data-testid="finalize-done">成品已在 Standalone 模式完成确认。</p>
+                      <div className="finalize-actions">
+                        <button
+                          className="primary-button"
+                          type="button"
+                          data-testid="download-final"
+                          onClick={downloadFinal}
+                          disabled={
+                            !selectedCandidate || !previewBytes[selectedCandidate.candidateId]
+                          }
+                        >
+                          下载成品 PNG <span>↓</span>
+                        </button>
+                      </div>
+                      <p className="finalize-download-note">
+                        下载的是已通过最终校验的 64×64 双层 PNG；公共下载端点待契约补全后接入。
+                      </p>
+                    </>
                   )}
                   {finalizeStatus === 'failed' && <p>最终校验失败，请检查错误后重试。</p>}
                 </div>
