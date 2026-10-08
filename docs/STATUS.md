@@ -1,26 +1,28 @@
 # 状态
 
-阶段：F1 受限 Standalone 准备方向（ADR-0009）。当前活动工作流 `MCP-F1-SKIN-008`（逐像素皮肤蓝图与动态 3D 预览）为 **blocked**：真实模型候选未达项目所有者视觉验收（Q-001 未决），技术链路各检查点以 Foundation 工作流记录为准。
+阶段：F1 受限 Standalone 准备方向（ADR-0009）。当前活动工作流 `MCP-F1-SKIN-008`（逐像素皮肤蓝图与动态 3D 预览）为 **blocked**：真实模型候选未达项目所有者视觉验收（Q-001 未决）；0.1.0-alpha.1 匿名窗口生产者技术链路已于 2026-10-08 范围扩展内完成并通过全量门禁。各检查点以 Foundation 工作流记录为准。
 
-实现：Standalone 最小纵向链路（SKIN-002）→ 契约无关硬化（SKIN-003）→ 候选预览接线与 v2/v3 渲染器演进（SKIN-004~007）→ 逐像素蓝图 v4 与第一方 3D 动态预览（SKIN-008 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4`，检查点至 9a06135）。
+实现：Standalone 最小纵向链路（SKIN-002）→ 契约无关硬化（SKIN-003）→ 候选预览接线与 v2/v3 渲染器演进（SKIN-004~007）→ 逐像素蓝图 v4 与第一方 3D 动态预览（SKIN-008 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4`）→ 0.1.0-alpha.1 匿名窗口生产者（2026-10-08 所有者授权的范围扩展）。
 
-工程骨架：pnpm workspace（apps/web Next.js 16、apps/api NestJS 12、apps/worker BullMQ 6；packages/config、contracts、skin-core、skin-validator、provider-sdk、test-fixtures、db）。TypeScript 严格模式、ESLint/Prettier、pino 结构化日志、私有健康探针、环境变量 Schema 验证、Prisma 7/PostgreSQL（2 个前向迁移）、Vitest 单测、testcontainers 集成测试、Playwright 冒烟、契约类型生成（0.1.0-draft）与 Minecraft 皮肤 fixture 校验均已实际运行通过。
+工程骨架：pnpm workspace（apps/web Next.js 16、apps/api NestJS 12、apps/worker BullMQ 6；packages/config、contracts、skin-core、skin-validator、provider-sdk、test-fixtures、db）。TypeScript 严格模式、ESLint/Prettier、pino 结构化日志、私有健康探针、环境变量 Schema 验证、Prisma 7/PostgreSQL（2 个前向迁移）、Vitest 单测、testcontainers 集成测试、Playwright 冒烟、契约类型生成与 Minecraft 皮肤 fixture 校验均已实际运行通过。
 
-已实现链路（至 SKIN-008 检查点 9a06135 + 2026-10-05 会话 2 接管增量）：
+已实现链路（契约八操作，ADR-0012 匿名窗口）：
 
-- 契约四操作（创建会话、请求渲染、确认成品、任务查询）+ 幂等键指纹 + 三次渲染上限（唯一约束并发安全）+ BullMQ 指数退避/死信 + 保留清理（会话 30 天、候选 24 小时，可控时钟验证）。
-- 内部 SkinDesign v4：受限调色板、六部件正反面逐像素网格、透明 overlay 网格与非空校验；确定性 UV 渲染器映射 Steve/Alex 64×64 布局（拒绝服装枚举模板分支）。
+- 公共表面（0.1.0-alpha.1，生成类型零漂移）：创建会话、请求渲染、确认成品、任务查询（原四操作）+ 会话详情（含时间顺序消息历史，公共角色仅 user/assistant，SYSTEM 过滤）、删除会话（204，级联）、候选预览字节（image/png）、成品下载（image/png）。
+- 幂等键指纹 + 三次渲染上限（唯一约束并发安全）+ BullMQ 指数退避/死信 + 保留清理（会话 30 天、候选 24 小时，可控时钟验证）。
+- 内部 SkinDesign v4：受限调色板、六部件正反面逐像素网格、透明 overlay 网格与非空校验；确定性 UV 渲染器映射 Steve/Alex 64×64 布局。
 - 第一方 CSS 3D 预览：六面 UV、基础层/overlay 双层、鼠标/触摸/键盘旋转、重置、idle/walk/run/fly 关节动画、播放/暂停、速度 0.5–2x、缩放 78%–128%、自动旋转（手动拖拽即停），无第三方 3D 运行时。
-- Pixel Foundry 工作台：欢迎引导与灵感起点、会话状态/已用渲染次数/到期时间、队列五态与错误码人话反馈、候选切换与并排对比、确认面板、刷新恢复（localStorage 快照 + 既有 GET /v1/jobs 重轮询）、确认后成品 PNG 下载（已通过最终校验的字节，客户端 Blob 下载）、终态（过期/完成）界面闭环与“开始新会话”入口、空/错/加载态、桌面与移动双视口。
+- 匿名窗口运行语义：128 位不可猜测 UUID 寻址；错配/未知/过期/已删除统一 404 不区分原因；会话级删除即时级联数据库行（消息/任务/候选/成品）与对象字节，对象清理失败键入队可重试（重试依据保留在任务负载）；在途渲染/确认经外键级联无法复活数据（有集成测试证据）。
+- 成功 finalize 的 Job.resource_id 返回本仓 FinalizedSkin ID（公共下载端点的资源标识，不伪装 Community 资源 ID）。
+- Pixel Foundry 工作台：欢迎引导与灵感起点、会话状态/已用渲染次数/到期时间、队列五态与错误码人话反馈、候选切换与并排对比、确认面板、刷新恢复（公共详情接口恢复会话与消息 + 既有任务接口重轮询 + 公共预览端点重载候选字节，404 即清除本地快照不复活）、公共端点成品 PNG 下载（Content-Type/64×64 校验在 E2E 断言）、删除入口（删除后刷新不复活）、对话记录面板、空/错/加载态、桌面与移动双视口。
 - 真实/Fake Provider 显式区分：`pnpm start:real` 强制 LLM Provider，缺少 `SKIN_LLM_BASE_URL/API_KEY/MODEL` 时启动即失败，绝不静默回退 fixture；`pnpm start:demo` 仅固定样例演示；界面三处标注当前模式。
-- 本地候选预览路由 `apps/web/src/app/demo-preview/`（.gitignore 授权的仅本地演示工具，不入库；2026-10-05 在 Mac 迁移后按原语义重建）。公共候选字节端点仍属契约缺口，待契约补全后替代。
 
-2026-10-05 会话 2 接管增量（008 范围内离线网站完善）：刷新恢复、确认后下载入口、候选并排对比、终态闭环与任务 404 语义；Playwright 扩展为桌面（1280×720）+ 移动（390×844）双视口完整 创建→调整→对比→预览→刷新恢复→确认→下载 流程并逐步截图。
+2026-10-08 范围扩展增量（alpha.1 生产者）：契约类型与 manifest 由已批准的 Contracts skin.yaml 0.1.0-alpha.1（`3006402`，只读源）经 `pnpm contract:gen` 重生成并锁定（contract:check 零漂移）；四个新公共端点、FinalizedSkin 资源引用、匿名窗口/删除级联/保留边界的 producer 集成证据；Web 工作台全部改走公共端点，gitignored 的本地 demo-preview 预览路由已被正式实现取代并移除（不再依赖不入库文件）。
 
-契约缺口（已记录，待顺序以 mc-plan-contracts 为主仓库补全 0.1.0-draft）：候选预览字节端点、Standalone 最终下载端点、会话详情与消息列表、用户提前删除会话、匿名安全模式语义。
+契约状态：skin.yaml 0.1.0-alpha.1 已由 CONTRACTS-003 锁定（Contracts main `3006402`）；本仓为其生产者，未修改任何 Contracts 工件。Official/Community 集成、长期历史、发布链路属后续工作流。
 
-已确定：Java 64×64 范围、Steve/Alex、最多三次渲染、确认后自动发布（Official）、Official/Standalone 双模式同库、远程适配器策略和保留期限。
+已确定：Java 64×64 范围、Steve/Alex、最多三次渲染、ADR-0012 匿名窗口语义、ADR-0011 消费者拉取投递、Official/Standalone 双模式同库、远程适配器策略和保留期限。
 
 待决：正式 AI 厂商（Q-001）、3D 预览库（Q-011，当前为第一方实现）、结构化创作意图字段（Q-012）、模型成本与额外会话积分价格（Q-013）。
 
-下一步：SKIN-008 解锁等待项目所有者的模型/预算/凭据或 prompt 策略决策（Q-001），其后执行受控真实基准并完成视觉验收；契约缺口按 Contracts 先行顺序另开工作流；Official 权益与 Community 发布阶段见 docs/development-plan.md 固定顺序。
+下一步：SKIN-008 解锁等待项目所有者的 Q-001 决策（模型/预算/凭据或 prompt 策略选择；付费 key 未注入本仓，apps/worker/.env 在本机不存在；CONTRACTS-003 记录所有者意图为 ≤10 次受控生成，但本仓未收到可审计的总调用上限与凭据），其后执行受控真实基准并完成视觉验收；Official 权益与 Community 发布阶段见 docs/development-plan.md 固定顺序；SDK skin 表面扩展待本生产者证据。

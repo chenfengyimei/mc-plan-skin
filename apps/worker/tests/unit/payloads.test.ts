@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { finalizeJobPayloadSchema, renderJobPayloadSchema } from '../../src/payloads.js';
+import {
+  finalizeJobPayloadSchema,
+  objectCleanupPayloadSchema,
+  renderJobPayloadSchema,
+} from '../../src/payloads.js';
 
 const validRenderPayload = {
   jobId: '0f14d0ab-9605-4d5b-a54f-83b2e57eab90',
@@ -44,5 +48,14 @@ describe('任务载荷校验', () => {
       void candidateId;
       finalizeJobPayloadSchema.parse(withoutCandidate);
     }).toThrow();
+  });
+
+  it('合法对象清理载荷通过；空键列表、空字符串键与非字符串键被拒绝', () => {
+    const payload = { keys: ['candidates/a.png', 'finals/b.png'] };
+    expect(objectCleanupPayloadSchema.parse(payload)).toEqual(payload);
+    expect(() => objectCleanupPayloadSchema.parse({ keys: [] })).toThrow();
+    expect(() => objectCleanupPayloadSchema.parse({ keys: [''] })).toThrow();
+    expect(() => objectCleanupPayloadSchema.parse({ keys: [1] })).toThrow();
+    expect(() => objectCleanupPayloadSchema.parse({})).toThrow();
   });
 });

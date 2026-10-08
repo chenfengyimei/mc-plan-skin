@@ -58,8 +58,6 @@ const sharedEnv = {
   SKIN_API_HOST: '127.0.0.1',
   SKIN_API_PORT: '4000',
   SKIN_CANDIDATE_STORAGE_ROOT: join(rootDir, 'data', 'demo-candidates'),
-  // 【仅本地演示】Web 端候选预览路由读取此目录（非公共 API；SKIN-004 后由契约端点替代）
-  SKIN_DEMO_PREVIEW_DIR: join(rootDir, 'data', 'demo-candidates'),
   SKIN_OFFICIAL_CORE_BASE_URL: '',
 };
 

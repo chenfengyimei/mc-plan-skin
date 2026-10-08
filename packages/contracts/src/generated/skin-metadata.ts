@@ -1,5 +1,5 @@
 /**
- * 由 mc-plan-contracts schemas/skin/skin-metadata.json（版本 0.1.0-draft）生成。
+ * 由 mc-plan-contracts schemas/skin/skin-metadata.json（版本 0.1.0-alpha.1）生成。
  * 生成命令：pnpm --filter @mc-plan/skin-contracts gen
  * 禁止手工修改；契约变化先在 mc-plan-contracts 仓库完成。
  */

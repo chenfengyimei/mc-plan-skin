@@ -1,5 +1,4 @@
 import { defineConfig } from '@playwright/test';
-import { resolve } from 'node:path';
 
 function e2ePort(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -34,7 +33,6 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         SKIN_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
-        SKIN_DEMO_PREVIEW_DIR: resolve(`data/e2e-candidates-${apiPort}`),
       },
     },
   ],

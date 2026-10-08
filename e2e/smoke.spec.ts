@@ -1,14 +1,35 @@
+import { readFile } from 'node:fs/promises';
+
 import { expect, test } from '@playwright/test';
 
 const SHOT_DIR = process.env.SKIN_E2E_SHOT_DIR ?? 'test-results/shots';
 
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function assertPng64(bytes: Buffer): void {
+  expect(bytes.subarray(0, 8)).toEqual(PNG_SIGNATURE);
+  expect(bytes.readUInt32BE(16)).toBe(64);
+  expect(bytes.readUInt32BE(20)).toBe(64);
+}
+
+async function readConversationId(page: import('@playwright/test').Page): Promise<string> {
+  const conversationId = await page.evaluate(() => {
+    const raw = window.localStorage.getItem('pixel-foundry-session-v1');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { conversation?: { conversation_id?: string } };
+    return parsed.conversation?.conversation_id ?? null;
+  });
+  expect(conversationId).toBeTruthy();
+  return conversationId as string;
+}
+
 /**
- * Standalone 纵向链路（自包含 Fake Provider 栈）：创建 → 渲染 → 3D 候选预览 →
- * 候选对比 → 刷新恢复 → 确认 → 下载。桌面与移动两个视口各覆盖一次完整流程；
- * 截图存 SKIN_E2E_SHOT_DIR（默认 test-results/shots，均不入库）。
+ * Standalone 纵向链路（自包含 Fake Provider 栈，公共契约 0.1.0-alpha.1 端点）：
+ * 创建 → 渲染 → 3D 候选预览 → 候选对比 → 刷新恢复（详情+消息） → 确认 → 公共端点下载 → 删除。
+ * 桌面与移动两个视口各覆盖一次完整流程；截图存 SKIN_E2E_SHOT_DIR（默认 test-results/shots）。
  */
 test.describe('Standalone 桌面全流程', () => {
-  test('创建→调整→对比→预览→刷新恢复→确认→下载', async ({ page }) => {
+  test('创建→调整→对比→预览→刷新恢复→确认→下载→删除', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'MC Plan Skin' })).toBeVisible();
     await expect(page.locator('.badge-ok')).toHaveText('正常', { timeout: 30_000 });
@@ -20,6 +41,7 @@ test.describe('Standalone 桌面全流程', () => {
     await expect(page.getByTestId('conversation-state')).toContainText('状态：active', {
       timeout: 20_000,
     });
+    await expect(page.getByTestId('message-list')).toContainText('雪地探险家');
 
     await page.getByRole('button', { name: /请求(真实)?渲染/ }).click();
     await expect(page.getByTestId('render-0')).toHaveClass(/render-succeeded/, { timeout: 60_000 });
@@ -87,11 +109,12 @@ test.describe('Standalone 桌面全流程', () => {
     await expect(preview).toHaveAttribute('data-zoom', '1.00');
     await page.screenshot({ path: `${SHOT_DIR}/desktop-04-preview.png`, fullPage: true });
 
-    // 刷新恢复：会话、队列、候选与 3D 预览从本地快照 + 公共任务查询接口重建
+    // 刷新恢复：会话与消息经公共详情接口重建，任务与候选经本地快照+任务接口重建
     await page.reload();
     await expect(page.getByTestId('conversation-state')).toContainText('状态：active', {
       timeout: 30_000,
     });
+    await expect(page.getByTestId('message-list')).toContainText('雪地探险家');
     await expect(page.getByTestId('render-0')).toHaveClass(/render-succeeded/);
     await expect(page.getByTestId('render-1')).toHaveClass(/render-succeeded/);
     await expect(page.getByTestId('candidate-list').locator('li')).toHaveCount(2);
@@ -108,19 +131,45 @@ test.describe('Standalone 桌面全流程', () => {
     });
     await expect(page.getByTestId('finalize-done')).toBeVisible();
 
-    // 确认后的下载入口：拿到已通过最终校验的 64×64 PNG
+    // 公共下载端点：下载事件 + Content-Type + PNG 魔数 + IHDR 64×64
+    const downloadUrl = await page.getByTestId('download-final').getAttribute('href');
+    expect(downloadUrl).toContain('/api/v1/conversations/');
+    const probe = await page.request.get(downloadUrl as string);
+    expect(probe.status()).toBe(200);
+    expect(probe.headers()['content-type']).toContain('image/png');
+    assertPng64(await probe.body());
+
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('download-final').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.png$/);
+    const downloadedPath = await download.path();
+    expect(downloadedPath).not.toBeNull();
+    const downloadedBytes = await readFile(downloadedPath as string);
+    assertPng64(downloadedBytes);
     await page.screenshot({ path: `${SHOT_DIR}/desktop-06-finalized.png`, fullPage: true });
+
+    // 会话删除：级联行与字节，刷新后不复活
+    const conversationId = await readConversationId(page);
+    await page.getByTestId('delete-conversation').click();
+    await expect(page.getByText('会话与全部候选、成品数据已删除。')).toBeVisible();
+
+    const deletedDetail = await page.request.get(`/api/v1/conversations/${conversationId}`);
+    expect(deletedDetail.status()).toBe(404);
+    const deletedDownload = await page.request.get(downloadUrl as string);
+    expect(deletedDownload.status()).toBe(404);
+
+    await page.reload();
+    await expect(page.getByTestId('conversation-state')).toHaveCount(0);
+    await expect(page.getByTestId('message-list')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '开始创作' })).toBeVisible();
   });
 });
 
 test.describe('Standalone 移动端全流程', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test('移动端创建→渲染→预览→确认→下载', async ({ page }) => {
+  test('移动端创建→渲染→预览→确认→下载→删除', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'MC Plan Skin' })).toBeVisible();
     await expect(page.locator('.badge-ok')).toHaveText('正常', { timeout: 30_000 });
@@ -132,6 +181,7 @@ test.describe('Standalone 移动端全流程', () => {
     await expect(page.getByTestId('conversation-state')).toContainText('状态：active', {
       timeout: 20_000,
     });
+    await expect(page.getByTestId('message-list')).toContainText('雪地探险家');
     await page.screenshot({ path: `${SHOT_DIR}/mobile-02-workbench.png`, fullPage: true });
 
     await page.getByRole('button', { name: /请求(真实)?渲染/ }).click();
@@ -163,10 +213,28 @@ test.describe('Standalone 移动端全流程', () => {
       timeout: 60_000,
     });
 
+    // 公共下载端点验证（Content-Type + 64×64 PNG）后触发真实下载
+    const downloadUrl = await page.getByTestId('download-final').getAttribute('href');
+    const probe = await page.request.get(downloadUrl as string);
+    expect(probe.status()).toBe(200);
+    expect(probe.headers()['content-type']).toContain('image/png');
+    assertPng64(await probe.body());
+
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('download-final').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.png$/);
     await page.screenshot({ path: `${SHOT_DIR}/mobile-04-finalized.png`, fullPage: true });
+
+    // 删除后详情 404、刷新回到欢迎态（不复活）
+    const conversationId = await readConversationId(page);
+    await page.getByTestId('delete-conversation').click();
+    await expect(page.getByText('会话与全部候选、成品数据已删除。')).toBeVisible();
+    const deletedDetail = await page.request.get(`/api/v1/conversations/${conversationId}`);
+    expect(deletedDetail.status()).toBe(404);
+
+    await page.reload();
+    await expect(page.getByTestId('conversation-state')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '开始创作' })).toBeVisible();
   });
 });

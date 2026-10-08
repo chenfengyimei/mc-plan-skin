@@ -15,6 +15,16 @@ interface ConversationInfo {
   expires_at: string;
 }
 
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+interface ConversationDetail extends ConversationInfo {
+  messages: ConversationMessage[];
+}
+
 interface RenderEntry {
   jobId: string;
   status: JobStatus;
@@ -59,9 +69,10 @@ function newIdempotencyKey(): string {
 }
 
 /**
- * 刷新恢复（仅依赖既有公共接口）：把会话与任务清单持久化在 localStorage；
- * 恢复时用 GET /v1/jobs/{id} 重轮询未终态任务，候选字节经本地 demo 预览路由重载。
- * 服务端仍是唯一真相；本地只保存恢复所需的引用与表单草稿。
+ * 刷新恢复（仅依赖公共契约 0.1.0-alpha.1 接口）：本地只持久化任务清单与表单草稿；
+ * 恢复时先 GET /v1/conversations/{id} 核实会话与消息（404 即清除本地快照，不复活数据），
+ * 再用 GET /v1/jobs/{id} 重轮询未终态任务，候选字节经公共预览端点重载。
+ * 服务端仍是唯一真相。
  */
 const SESSION_STORAGE_KEY = 'pixel-foundry-session-v1';
 
@@ -147,6 +158,20 @@ async function postJson(
   return { ok: response.ok, status: response.status, data };
 }
 
+async function deleteJson(url: string): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const response = await fetch(url, { method: 'DELETE' });
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { detail: text };
+    }
+  }
+  return { ok: response.ok, status: response.status, data };
+}
+
 function errorMessage(code: string | null): string | null {
   if (!code) return null;
   return ERROR_MESSAGES[code] ?? `生成任务失败（${code}）`;
@@ -155,6 +180,17 @@ function errorMessage(code: string | null): string | null {
 function formatExpiry(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '30 天后';
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatMessageTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('zh-CN', {
     month: 'numeric',
     day: 'numeric',
@@ -186,9 +222,46 @@ function WorkflowRail({ current }: { current: number }) {
   );
 }
 
+function MessageHistory({ messages }: { messages: ConversationMessage[] }) {
+  return (
+    <section className="message-history panel" aria-label="对话记录">
+      <div className="queue-heading">
+        <div>
+          <small>CONVERSATION</small>
+          <h3>对话记录</h3>
+        </div>
+        <span>{messages.length}</span>
+      </div>
+      {messages.length === 0 ? (
+        <div className="queue-empty">
+          <span>…</span>
+          <p>
+            还没有消息
+            <br />
+            <small>会话创建后会在这里记录</small>
+          </p>
+        </div>
+      ) : (
+        <ol data-testid="message-list" className="message-list">
+          {messages.map((message, index) => (
+            <li key={`${message.created_at}-${index}`} className={`message-${message.role}`}>
+              <span className="message-role">{message.role === 'assistant' ? '模型' : '描述'}</span>
+              <div>
+                <p>{message.content}</p>
+                <small>{formatMessageTime(message.created_at)}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 /** Standalone 创作工作台：创建 → 真实/演示 Provider 渲染 → 3D 检查 → 确认。 */
 export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [initialInput, setInitialInput] = useState('');
   const [renderInput, setRenderInput] = useState('');
   const [armModel, setArmModel] = useState<'steve' | 'alex'>('steve');
@@ -197,9 +270,11 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [finalizeJobId, setFinalizeJobId] = useState<string | null>(null);
   const [finalizeStatus, setFinalizeStatus] = useState<JobStatus | null>(null);
+  const [finalizeResourceId, setFinalizeResourceId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -221,7 +296,12 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const pollJob = useCallback(
     async (
       jobId: string,
-      onUpdate: (status: JobStatus, candidateId: string | null, errorCode: string | null) => void,
+      onUpdate: (
+        status: JobStatus,
+        candidateId: string | null,
+        errorCode: string | null,
+        resourceId: string | null,
+      ) => void,
     ) => {
       const poll = async (): Promise<void> => {
         try {
@@ -229,7 +309,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
           if (!response.ok) {
             if (response.status === 404) {
               // 任务行已不存在（保留期清理或记录缺失）：作为终态呈现，不再轮询。
-              onUpdate('failed', null, 'SKIN_JOB_NOT_FOUND');
+              onUpdate('failed', null, 'SKIN_JOB_NOT_FOUND', null);
               setError(errorMessage('SKIN_JOB_NOT_FOUND'));
               return;
             }
@@ -240,8 +320,9 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
             status: JobStatus;
             candidate_id: string | null;
             error_code: string | null;
+            resource_id: string | null;
           };
-          onUpdate(job.status, job.candidate_id, job.error_code);
+          onUpdate(job.status, job.candidate_id, job.error_code, job.resource_id);
           if (job.status === 'failed') setError(errorMessage(job.error_code));
           if (job.status === 'queued' || job.status === 'running') {
             const timer = setTimeout(() => void poll(), 2000);
@@ -256,24 +337,49 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
     [],
   );
 
-  const loadPreview = useCallback(async (candidateId: string) => {
+  const loadPreview = useCallback(async (conversationId: string, candidateId: string) => {
     try {
-      const response = await fetch(`/demo-preview/${candidateId}`);
+      const response = await fetch(
+        `/api/v1/conversations/${conversationId}/candidates/${candidateId}/preview`,
+      );
       if (!response.ok) return;
       const bytes = new Uint8Array(await response.arrayBuffer());
       setPreviewBytes((previous) =>
         previous[candidateId] ? previous : { ...previous, [candidateId]: bytes },
       );
     } catch {
-      // 候选已经安全保存；预览路由短暂失败不改变任务状态。
+      // 候选已由服务端按保留期管理；预览短暂失败不改变任务状态。
     }
   }, []);
 
-  // 刷新恢复：仅挂载时执行；未终态任务恢复轮询，已完成候选重载预览字节。
-  const restoreSession = useCallback((): boolean => {
+  // 刷新恢复：先经公共详情接口核实会话（404/过期/已删除即清除本地快照），
+  // 再恢复未终态任务轮询与候选字节加载。
+  const restoreSession = useCallback(async (): Promise<void> => {
     const persisted = readPersistedSession();
-    if (!persisted) return false;
-    setConversation(persisted.conversation);
+    if (!persisted) return;
+    const conversationId = persisted.conversation.conversation_id;
+    let detail: ConversationDetail | null = null;
+    let detailReachable = false;
+    try {
+      const response = await fetch(`/api/v1/conversations/${conversationId}`);
+      if (response.status === 404) {
+        // 会话未知/过期/已删除：本地快照立即失效，不复活任何数据。
+        writePersistedSession(null);
+        return;
+      }
+      if (response.ok) {
+        detail = (await response.json()) as ConversationDetail;
+        detailReachable = true;
+      }
+    } catch {
+      // 详情接口暂不可达：按本地快照恢复，界面提示稍后核实。
+    }
+    const hydrated = detail ?? persisted.conversation;
+    setConversation(hydrated);
+    setMessages(detail?.messages ?? []);
+    if (!detailReachable && detail === null) {
+      setError('暂时无法核实会话状态，稍后刷新重试。');
+    }
     setRenders(persisted.renders);
     setSelectedCandidateId(persisted.selectedCandidateId);
     setTitle(persisted.title);
@@ -292,27 +398,28 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
           );
           if (status === 'succeeded' && candidateId) {
             setSelectedCandidateId(candidateId);
-            void loadPreview(candidateId);
+            void loadPreview(conversationId, candidateId);
           }
         });
       } else if (entry.candidateId) {
-        void loadPreview(entry.candidateId);
+        void loadPreview(conversationId, entry.candidateId);
       }
     }
-    if (
-      persisted.finalizeJobId &&
-      (persisted.finalizeStatus === 'queued' || persisted.finalizeStatus === 'running')
-    ) {
-      void pollJob(persisted.finalizeJobId, (status, _candidateId, finalizeErrorCode) => {
-        setFinalizeStatus(status);
-        if (status === 'failed') setError(errorMessage(finalizeErrorCode));
-      });
+    if (persisted.finalizeJobId) {
+      // 成功确认的任务单次拉取即可恢复 resource_id（公共下载端点资源标识）。
+      void pollJob(
+        persisted.finalizeJobId,
+        (status, _candidateId, finalizeErrorCode, resourceId) => {
+          setFinalizeStatus(status);
+          if (status === 'succeeded' && resourceId) setFinalizeResourceId(resourceId);
+          if (status === 'failed') setError(errorMessage(finalizeErrorCode));
+        },
+      );
     }
-    return true;
   }, [pollJob, loadPreview]);
 
   useEffect(() => {
-    restoreSession();
+    void restoreSession();
   }, [restoreSession]);
 
   // 会话存在即持续同步本地快照，供刷新后恢复。
@@ -346,6 +453,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
     }
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const result = await postJson('/api/v1/conversations', {
         initial_message: initialInput.trim(),
@@ -355,7 +463,11 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
         setError(problem?.detail ?? `创建会话失败（${result.status}）`);
         return;
       }
-      setConversation(result.data as ConversationInfo);
+      const created = result.data as ConversationInfo;
+      setConversation(created);
+      setMessages([
+        { role: 'user', content: initialInput.trim(), created_at: new Date().toISOString() },
+      ]);
       setRenderInput(initialInput.trim());
     } catch (requestError) {
       setError(`无法连接创作服务：${(requestError as Error).message}`);
@@ -403,7 +515,7 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
         );
         if (status === 'succeeded' && candidateId) {
           setSelectedCandidateId(candidateId);
-          void loadPreview(candidateId);
+          void loadPreview(conversation.conversation_id, candidateId);
         }
       });
     } catch (requestError) {
@@ -434,8 +546,9 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
         const accepted = result.data as { job_id: string };
         setFinalizeJobId(accepted.job_id);
         setFinalizeStatus('queued');
-        void pollJob(accepted.job_id, (status, _candidateId, finalizeErrorCode) => {
+        void pollJob(accepted.job_id, (status, _candidateId, finalizeErrorCode, resourceId) => {
           setFinalizeStatus(status);
+          if (status === 'succeeded' && resourceId) setFinalizeResourceId(resourceId);
           if (status === 'failed') setError(errorMessage(finalizeErrorCode));
         });
       } catch (requestError) {
@@ -450,16 +563,38 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const resetSession = useCallback((): void => {
     writePersistedSession(null);
     setConversation(null);
+    setMessages([]);
     setRenders([]);
     setPreviewBytes({});
     setSelectedCandidateId(null);
     setFinalizeJobId(null);
     setFinalizeStatus(null);
+    setFinalizeResourceId(null);
     setCompareMode(false);
     setTitle('');
     setDescription('');
     setError(null);
   }, []);
+
+  const deleteConversation = useCallback(async (): Promise<void> => {
+    if (!conversation) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await deleteJson(`/api/v1/conversations/${conversation.conversation_id}`);
+      if (!result.ok) {
+        const problem = result.data as { detail?: string } | null;
+        setError(problem?.detail ?? `删除会话失败（${result.status}）`);
+        return;
+      }
+      resetSession();
+      setNotice('会话与全部候选、成品数据已删除。');
+    } catch (requestError) {
+      setError(`无法删除会话：${(requestError as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [conversation, resetSession]);
 
   const candidates = useMemo(
     () =>
@@ -490,23 +625,15 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
     finalizeStatus === 'succeeded' ? 'completed' : (conversation?.status ?? 'active');
   const sessionExpired = conversation ? now >= Date.parse(conversation.expires_at) : false;
   const rendersLocked = sessionStatus !== 'active' || sessionExpired;
-
-  // 确认成功后下载成品：字节来自已通过最终校验的候选 PNG（与 worker 存储的成品内容一致）。
-  // 这是 Standalone 本地下载，不发明公共下载端点；公共契约缺口仍按记录由 Contracts 先行补全。
-  const downloadFinal = useCallback((): void => {
-    if (!selectedCandidate) return;
-    const bytes = previewBytes[selectedCandidate.candidateId];
-    if (!bytes) return;
-    const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${title.trim() || 'minecraft-skin'}.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [selectedCandidate, previewBytes, title]);
+  // 公共下载端点地址：成功确认后由 Job.resource_id（本仓 FinalizedSkin ID）定位成品字节。
+  const finalDownloadUrl =
+    finalizeStatus === 'succeeded' &&
+    finalizeResourceId &&
+    conversation &&
+    selectedCandidate &&
+    previewBytes[selectedCandidate.candidateId]
+      ? `/api/v1/conversations/${conversation.conversation_id}/skins/${finalizeResourceId}/download`
+      : null;
 
   return (
     <section className="studio-workflow" aria-label="AI 皮肤创作工作台">
@@ -564,6 +691,12 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
               </div>
             </div>
 
+            {notice && (
+              <div className="alert alert-notice" role="status">
+                <span>✓</span>
+                <p>{notice}</p>
+              </div>
+            )}
             {error && (
               <div className="alert alert-error" role="alert">
                 <span>!</span>
@@ -654,12 +787,25 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                   会话已超过保留期，不能再发起新渲染；可开始新会话。
                 </p>
               )}
-              {rendersLocked && (
-                <button type="button" className="session-reset" onClick={resetSession}>
-                  开始新会话
+              <div className="session-actions">
+                <button
+                  type="button"
+                  className="session-delete"
+                  data-testid="delete-conversation"
+                  disabled={busy}
+                  onClick={() => void deleteConversation()}
+                >
+                  删除会话与数据
                 </button>
-              )}
+                {rendersLocked && (
+                  <button type="button" className="session-reset" onClick={resetSession}>
+                    开始新会话
+                  </button>
+                )}
+              </div>
             </section>
+
+            <MessageHistory messages={messages} />
 
             <section className="editor-card panel">
               <div className="compact-heading">
@@ -975,20 +1121,23 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
                     <>
                       <p data-testid="finalize-done">成品已在 Standalone 模式完成确认。</p>
                       <div className="finalize-actions">
-                        <button
-                          className="primary-button"
-                          type="button"
-                          data-testid="download-final"
-                          onClick={downloadFinal}
-                          disabled={
-                            !selectedCandidate || !previewBytes[selectedCandidate.candidateId]
-                          }
-                        >
-                          下载成品 PNG <span>↓</span>
-                        </button>
+                        {finalDownloadUrl ? (
+                          <a
+                            className="primary-button"
+                            data-testid="download-final"
+                            href={finalDownloadUrl}
+                            download={`${title.trim() || 'minecraft-skin'}.png`}
+                          >
+                            下载成品 PNG <span>↓</span>
+                          </a>
+                        ) : (
+                          <button className="primary-button" type="button" disabled>
+                            正在定位成品资源
+                          </button>
+                        )}
                       </div>
                       <p className="finalize-download-note">
-                        下载的是已通过最终校验的 64×64 双层 PNG；公共下载端点待契约补全后接入。
+                        从公共下载端点获取已通过最终校验的 64×64 双层 PNG。
                       </p>
                     </>
                   )}

@@ -18,9 +18,13 @@ import { FileSystemObjectStorage } from '@mc-plan/skin-core';
 
 import { processFinalizeJob } from '../../src/finalize.processor.js';
 import { processRenderJob } from '../../src/render.processor.js';
-import { runRetentionCleanup } from '../../src/retention.processor.js';
+import { runObjectCleanup, runRetentionCleanup } from '../../src/retention.processor.js';
 import type { WorkerContext } from '../../src/worker-context.js';
-import { RETRYABLE_JOB_OPTIONS, createRenderWorker } from '../../src/worker-factory.js';
+import {
+  RETRYABLE_JOB_OPTIONS,
+  createRenderWorker,
+  createRetentionWorker,
+} from '../../src/worker-factory.js';
 import type { Job } from 'bullmq';
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -303,6 +307,117 @@ describe('渲染→候选→确认→保留 纵向链路（真实 PostgreSQL）'
     const keptAfter = await db.conversation.findUniqueOrThrow({ where: { id: kept.id } });
     expect(keptAfter.status).toBe('ACTIVE');
   });
+
+  it('runObjectCleanup：删除指定键；缺失键幂等；失败抛出交由重试', async () => {
+    const keyA = 'candidates/cleanup-a.png';
+    const keyB = 'candidates/cleanup-b.png';
+    await ctx.storage.put(keyA, new Uint8Array([1, 2]), 'image/png');
+    await ctx.storage.put(keyB, new Uint8Array([3, 4]), 'image/png');
+
+    await runObjectCleanup(ctx, [keyA, keyB]);
+    await expect(ctx.storage.exists(keyA)).resolves.toBe(false);
+    await expect(ctx.storage.exists(keyB)).resolves.toBe(false);
+
+    // 已被删除的键再次清理保持幂等（不抛出）。
+    await expect(runObjectCleanup(ctx, [keyA])).resolves.toBeUndefined();
+
+    const failingCtx: WorkerContext = {
+      ...ctx,
+      storage: {
+        ...ctx.storage,
+        delete: async () => {
+          throw new Error('storage down');
+        },
+      },
+    };
+    await expect(runObjectCleanup(failingCtx, [keyB])).rejects.toThrow('storage down');
+  });
+
+  it('会话删除后：在途渲染任务无法写回候选（行级联缺失）', async () => {
+    const conversation = await seedConversation();
+    const job = await db.renderJob.create({
+      data: {
+        conversationId: conversation.id,
+        attempt: 1,
+        kind: 'RENDER',
+        armModel: 'STEVE',
+        prompt: '删除后渲染',
+      },
+    });
+    await db.conversation.delete({ where: { id: conversation.id } });
+
+    await expect(
+      processRenderJob(
+        ctx,
+        {
+          jobId: job.id,
+          conversationId: conversation.id,
+          attempt: 1,
+          armModel: 'steve',
+          prompt: '删除后渲染',
+        },
+        fakeBullJob,
+      ),
+    ).rejects.toThrow('render job row missing');
+
+    const remaining = await db.candidate.findMany({
+      where: { renderJob: { conversationId: conversation.id } },
+    });
+    expect(remaining).toHaveLength(0);
+  });
+
+  it('会话删除后：在途确认任务无法写回成品（行级联缺失）', async () => {
+    const conversation = await seedConversation();
+    const renderJob = await db.renderJob.create({
+      data: {
+        conversationId: conversation.id,
+        attempt: 1,
+        kind: 'RENDER',
+        armModel: 'STEVE',
+        prompt: '删除后确认',
+      },
+    });
+    await processRenderJob(
+      ctx,
+      {
+        jobId: renderJob.id,
+        conversationId: conversation.id,
+        attempt: 1,
+        armModel: 'steve',
+        prompt: '删除后确认',
+      },
+      fakeBullJob,
+    );
+    const candidate = await db.candidate.findUniqueOrThrow({
+      where: { renderJobId: renderJob.id },
+    });
+    const finalizeJob = await db.renderJob.create({
+      data: {
+        conversationId: conversation.id,
+        attempt: 0,
+        kind: 'FINALIZE',
+        armModel: 'STEVE',
+        prompt: '删除后确认成品',
+      },
+    });
+
+    await db.conversation.delete({ where: { id: conversation.id } });
+
+    await expect(
+      processFinalizeJob(ctx, {
+        jobId: finalizeJob.id,
+        conversationId: conversation.id,
+        candidateId: candidate.id,
+        title: '不可复活',
+        description: '',
+      }),
+    ).rejects.toThrow('finalize job row missing');
+
+    const finals = await db.finalizedSkin.findMany({
+      where: { conversationId: conversation.id },
+    });
+    expect(finals).toHaveLength(0);
+  });
 });
 
 describe('BullMQ 重试语义（真实 Redis + PostgreSQL）', () => {
@@ -409,5 +524,87 @@ describe('BullMQ 重试语义（真实 Redis + PostgreSQL）', () => {
 
     await worker.close();
     await queue.close();
+  });
+
+  it('保留 worker：keys 载荷执行目标清理，空载荷执行清扫', async () => {
+    const storage = new FileSystemObjectStorage(storageRoot);
+    const targetedKey = 'candidates/targeted-cleanup.png';
+    await storage.put(targetedKey, new Uint8Array([9, 9]), 'image/png');
+
+    const clock = new FixedClock(new Date());
+    const retentionCtx: WorkerContext = {
+      db,
+      storage,
+      provider: new FakeProvider({
+        environment: 'test',
+        resolveFixture: async () => loadFixtureBytes('valid-steve'),
+      }),
+      clock,
+      logger: pino({ level: 'fatal' }),
+      candidateRetentionHours: 24,
+    };
+    const conversation = await db.conversation.create({
+      data: {
+        attemptsLimit: 3,
+        expiresAt: new Date(clock.now().getTime() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+    const staleJob = await db.renderJob.create({
+      data: {
+        conversationId: conversation.id,
+        attempt: 1,
+        kind: 'RENDER',
+        armModel: 'STEVE',
+        prompt: '过期清理',
+      },
+    });
+    await processRenderJob(
+      retentionCtx,
+      {
+        jobId: staleJob.id,
+        conversationId: conversation.id,
+        attempt: 1,
+        armModel: 'steve',
+        prompt: '过期清理',
+      },
+      fakeBullJob,
+    );
+    const staleCandidate = await db.candidate.findUniqueOrThrow({
+      where: { renderJobId: staleJob.id },
+    });
+    await db.candidate.update({
+      where: { id: staleCandidate.id },
+      data: { expiresAt: new Date(clock.now().getTime() - 1000) },
+    });
+
+    const connection = { url: redis.getConnectionUrl() };
+    const worker = createRetentionWorker(retentionCtx, connection);
+    const queue = new Queue(QUEUE_NAMES.retentionCleanup, {
+      connection,
+      defaultJobOptions: RETRYABLE_JOB_OPTIONS,
+    });
+    try {
+      await queue.add(
+        QUEUE_NAMES.retentionCleanup,
+        { keys: [targetedKey] },
+        { jobId: 'targeted-cleanup-test' },
+      );
+      const targetedDone = await waitFor(async () => !(await storage.exists(targetedKey)), 30_000);
+      expect(targetedDone).toBe(true);
+      // 目标清理不触发清扫：过期候选行仍在。
+      await expect(
+        db.candidate.findUnique({ where: { id: staleCandidate.id } }),
+      ).resolves.not.toBeNull();
+
+      await queue.add(QUEUE_NAMES.retentionCleanup, {}, { jobId: 'sweep-cleanup-test' });
+      const swept = await waitFor(
+        async () => (await db.candidate.findUnique({ where: { id: staleCandidate.id } })) === null,
+        30_000,
+      );
+      expect(swept).toBe(true);
+    } finally {
+      await worker.close();
+      await queue.close();
+    }
   });
 });

@@ -2,11 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  Header,
   Headers,
   HttpCode,
   Param,
   Post,
+  StreamableFile,
 } from '@nestjs/common';
 import { z } from 'zod';
 
@@ -55,7 +58,7 @@ function requireIdempotencyKey(value: string | undefined): string {
   return parsed.data;
 }
 
-/** 公共契约 0.1.0-draft 定义的四个操作；Official 集成端点在后续工作流接入。 */
+/** 公共契约 0.1.0-alpha.1 定义的八个操作；Official 集成端点在后续工作流接入。 */
 @Controller('v1')
 export class ConversationsController {
   public constructor(private readonly conversations: ConversationService) {}
@@ -108,5 +111,36 @@ export class ConversationsController {
   @Get('jobs/:jobId')
   public async getJob(@Param('jobId') jobId: string): Promise<unknown> {
     return this.conversations.getJob(jobId);
+  }
+
+  @Get('conversations/:conversationId')
+  public async getConversation(@Param('conversationId') conversationId: string): Promise<unknown> {
+    return this.conversations.getConversationDetail(conversationId);
+  }
+
+  @Delete('conversations/:conversationId')
+  @HttpCode(204)
+  public async deleteConversation(@Param('conversationId') conversationId: string): Promise<void> {
+    await this.conversations.deleteConversation(conversationId);
+  }
+
+  @Get('conversations/:conversationId/candidates/:candidateId/preview')
+  @Header('cache-control', 'no-store')
+  public async getCandidatePreview(
+    @Param('conversationId') conversationId: string,
+    @Param('candidateId') candidateId: string,
+  ): Promise<StreamableFile> {
+    const bytes = await this.conversations.getCandidatePreview(conversationId, candidateId);
+    return new StreamableFile(new Uint8Array(bytes), { type: 'image/png' });
+  }
+
+  @Get('conversations/:conversationId/skins/:resourceId/download')
+  @Header('cache-control', 'no-store')
+  public async downloadSkin(
+    @Param('conversationId') conversationId: string,
+    @Param('resourceId') resourceId: string,
+  ): Promise<StreamableFile> {
+    const bytes = await this.conversations.downloadSkin(conversationId, resourceId);
+    return new StreamableFile(new Uint8Array(bytes), { type: 'image/png' });
   }
 }

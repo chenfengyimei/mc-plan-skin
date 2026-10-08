@@ -7,6 +7,7 @@ import { APP_CONFIG } from '../config/config.token.js';
 
 export const RENDER_QUEUE = Symbol('RENDER_QUEUE');
 export const FINALIZE_QUEUE = Symbol('FINALIZE_QUEUE');
+export const RETENTION_QUEUE = Symbol('RETENTION_QUEUE');
 
 /** 队列携带失败重试语义（指数退避 3 次尝试），与 worker 处理器约定一致。 */
 function createQueue(config: ApiConfig, name: string): Queue {
@@ -29,7 +30,12 @@ function createQueue(config: ApiConfig, name: string): Queue {
       useFactory: (config: ApiConfig) => createQueue(config, QUEUE_NAMES.finalize),
       inject: [APP_CONFIG],
     },
+    {
+      provide: RETENTION_QUEUE,
+      useFactory: (config: ApiConfig) => createQueue(config, QUEUE_NAMES.retentionCleanup),
+      inject: [APP_CONFIG],
+    },
   ],
-  exports: [RENDER_QUEUE, FINALIZE_QUEUE],
+  exports: [RENDER_QUEUE, FINALIZE_QUEUE, RETENTION_QUEUE],
 })
 export class QueueModule {}

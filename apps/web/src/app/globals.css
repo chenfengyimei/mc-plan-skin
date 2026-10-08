@@ -806,6 +806,27 @@ main.app-shell {
   font-size: 0.82rem;
 }
 
+.alert-notice {
+  border: 1px solid rgb(106 240 167 / 32%);
+  background: rgb(39 190 111 / 9%);
+}
+
+.alert-notice span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(39 190 111 / 16%);
+  color: var(--green);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.alert-notice p {
+  color: #b8eccc;
+}
+
 /* 主按钮 */
 
 .primary-button {
@@ -1730,6 +1751,105 @@ input:focus-visible {
 .session-reset:hover {
   border-color: rgb(99 211 255 / 55%);
   color: #eaf7ff;
+}
+
+.session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.session-delete {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid rgb(255 121 121 / 32%);
+  border-radius: 10px;
+  background: rgb(255 121 121 / 6%);
+  color: #e8a5a5;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.session-delete:hover:not(:disabled) {
+  border-color: rgb(255 121 121 / 55%);
+  color: #ffc9c9;
+  background: rgb(255 121 121 / 10%);
+}
+
+.session-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* 会话消息历史（公共详情接口恢复） */
+
+.message-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.message-list li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgb(6 13 23 / 48%);
+}
+
+.message-role {
+  flex: none;
+  padding: 0.18rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+}
+
+.message-user .message-role {
+  border-color: rgb(99 211 255 / 40%);
+  color: var(--cyan);
+}
+
+.message-assistant .message-role {
+  border-color: rgb(196 181 253 / 45%);
+  color: #c4b5fd;
+}
+
+.message-list p {
+  margin: 0;
+  color: #c9d9e6;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.message-list small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.6rem;
 }
 
 /* 候选并排对比 */

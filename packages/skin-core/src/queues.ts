@@ -32,3 +32,11 @@ export interface FinalizeJobPayload {
   title: string;
   description: string;
 }
+
+/**
+ * 目标式对象清理任务载荷：会话级删除路径中对象字节同步清理失败的键，
+ * 入队后由保留 worker 重试（重试依据保存在任务负载中，不依赖数据库行）。
+ */
+export interface ObjectCleanupJobPayload {
+  keys: string[];
+}

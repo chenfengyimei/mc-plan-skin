@@ -12,6 +12,26 @@ export interface RetentionReport {
   failedObjectDeletes: number;
 }
 
+/**
+ * 目标式对象清理：会话级删除路径中同步清理失败的键由队列任务携带重试依据；
+ * 删除失败抛出交由 BullMQ 指数退避重试，耗尽后负载保留在 failed 死信中可人工核账。
+ */
+export async function runObjectCleanup(ctx: WorkerContext, keys: string[]): Promise<void> {
+  for (const key of keys) {
+    try {
+      await ctx.storage.delete(key);
+    } catch (error) {
+      ctx.logger.error({
+        event: 'object_cleanup_delete_failed',
+        result: 'failure',
+        key_hash: Buffer.from(key).subarray(0, 16).toString('hex'),
+        error: (error as Error).name,
+      });
+      throw error;
+    }
+  }
+}
+
 export async function runRetentionCleanup(ctx: WorkerContext): Promise<RetentionReport> {
   const now = ctx.clock.now();
   const report: RetentionReport = {

@@ -13,11 +13,14 @@ import {
   canRequestRender,
   type ConversationState,
   type FinalizeJobPayload,
+  type ObjectCleanupJobPayload,
+  type ObjectStorage,
   type RenderJobPayload,
 } from '@mc-plan/skin-core';
 import type { PrismaClient, RenderJob, SkinConversationStatus } from '@mc-plan/skin-db';
 import { PRISMA_CLIENT } from '../platform/database/prisma.token.js';
-import { FINALIZE_QUEUE, RENDER_QUEUE } from '../platform/queue/queue.module.js';
+import { OBJECT_STORAGE } from '../platform/storage/storage.module.js';
+import { FINALIZE_QUEUE, RENDER_QUEUE, RETENTION_QUEUE } from '../platform/queue/queue.module.js';
 import { APP_CONFIG } from '../platform/config/config.token.js';
 import { IdempotencyService } from './idempotency.service.js';
 
@@ -27,6 +30,14 @@ export interface ConversationDto {
   attempts_used: number;
   attempts_limit: number;
   expires_at: string;
+}
+
+export interface ConversationDetailDto extends ConversationDto {
+  messages: {
+    role: 'user' | 'assistant';
+    content: string;
+    created_at: string;
+  }[];
 }
 
 export interface JobAcceptedDto {
@@ -61,13 +72,15 @@ const JOB_STATUS_MAP = {
   CANCELLED: 'cancelled',
 } as const;
 
-/** Standalone 最小纵向链路：契约 0.1.0-draft 四个操作的领域编排。 */
+/** Standalone 契约 0.1.0-alpha.1 八个操作的领域编排（含 ADR-0012 匿名窗口表面）。 */
 @Injectable()
 export class ConversationService implements OnApplicationShutdown {
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     @Inject(RENDER_QUEUE) private readonly renderQueue: Queue<RenderJobPayload>,
     @Inject(FINALIZE_QUEUE) private readonly finalizeQueue: Queue<FinalizeJobPayload>,
+    @Inject(RETENTION_QUEUE) private readonly retentionQueue: Queue<ObjectCleanupJobPayload>,
+    @Inject(OBJECT_STORAGE) private readonly storage: ObjectStorage,
     @Inject(APP_CONFIG) private readonly config: ApiConfig,
     private readonly idempotency: IdempotencyService,
   ) {}
@@ -75,6 +88,7 @@ export class ConversationService implements OnApplicationShutdown {
   public async onApplicationShutdown(): Promise<void> {
     await this.renderQueue.close();
     await this.finalizeQueue.close();
+    await this.retentionQueue.close();
   }
 
   public async createConversation(input: {
@@ -287,7 +301,7 @@ export class ConversationService implements OnApplicationShutdown {
   public async getJob(jobId: string): Promise<JobDto> {
     const job = await this.prisma.renderJob.findUnique({
       where: { id: jobId },
-      include: { candidate: true },
+      include: { candidate: true, conversation: { include: { finalizedSkin: true } } },
     });
     if (!job) {
       throw new NotFoundException({
@@ -296,6 +310,129 @@ export class ConversationService implements OnApplicationShutdown {
       });
     }
     return this.toJobDto(job);
+  }
+
+  /** getConversation：详情含时间顺序消息；SYSTEM 角色不出现在公共表面。 */
+  public async getConversationDetail(conversationId: string): Promise<ConversationDetailDto> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!conversation || this.isConversationExpired(conversation)) {
+      throw new NotFoundException({
+        code: 'SKIN_CONVERSATION_NOT_FOUND',
+        message: '会话不存在',
+      });
+    }
+    return {
+      ...this.toConversationDto(conversation),
+      messages: conversation.messages
+        .filter((message) => message.role === 'USER' || message.role === 'ASSISTANT')
+        .map((message) => ({
+          role: message.role === 'ASSISTANT' ? ('assistant' as const) : ('user' as const),
+          content: message.content,
+          created_at: message.createdAt.toISOString(),
+        })),
+    };
+  }
+
+  /** deleteConversation：行级数据先行级联删除，对象字节尽力清理、失败键入队重试。 */
+  public async deleteConversation(conversationId: string): Promise<void> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { renderJobs: { include: { candidate: true } }, finalizedSkin: true },
+    });
+    if (!conversation || this.isConversationExpired(conversation)) {
+      throw new NotFoundException({
+        code: 'SKIN_CONVERSATION_NOT_FOUND',
+        message: '会话不存在',
+      });
+    }
+    const objectKeys = [
+      ...conversation.renderJobs.flatMap((job) =>
+        job.candidate ? [job.candidate.storageKey] : [],
+      ),
+      ...(conversation.finalizedSkin ? [conversation.finalizedSkin.storageKey] : []),
+    ];
+    // 外键级联使消息/任务/候选/成品行随会话一起消失；在途渲染/确认无法复活数据。
+    await this.prisma.conversation.delete({ where: { id: conversation.id } });
+
+    const failedKeys: string[] = [];
+    for (const key of objectKeys) {
+      try {
+        await this.storage.delete(key);
+      } catch {
+        failedKeys.push(key);
+      }
+    }
+    if (failedKeys.length > 0) {
+      // 重试依据保留在队列任务负载中：行已删除，字节清理失败不丢失可恢复性。
+      await this.retentionQueue.add(
+        QUEUE_NAMES.retentionCleanup,
+        { keys: failedKeys },
+        { jobId: `object-cleanup-${conversation.id}` },
+      );
+    }
+  }
+
+  /** getCandidatePreview：已验证候选字节；错配/未知/过期/已删除统一 404（ADR-0012）。 */
+  public async getCandidatePreview(
+    conversationId: string,
+    candidateId: string,
+  ): Promise<Uint8Array> {
+    const candidate = await this.prisma.candidate.findUnique({
+      where: { id: candidateId },
+      include: { renderJob: true },
+    });
+    if (
+      !candidate ||
+      candidate.renderJob.conversationId !== conversationId ||
+      candidate.expiresAt.getTime() <= this.systemClock().now().getTime()
+    ) {
+      throw new NotFoundException({
+        code: 'SKIN_CANDIDATE_NOT_FOUND',
+        message: '候选不存在',
+      });
+    }
+    try {
+      return await this.storage.get(candidate.storageKey);
+    } catch {
+      // 字节已被清扫/删除：与未知候选同样返回 404，不区分原因。
+      throw new NotFoundException({
+        code: 'SKIN_CANDIDATE_NOT_FOUND',
+        message: '候选不存在',
+      });
+    }
+  }
+
+  /** downloadSkin：本仓 FinalizedSkin 成品字节，受 30 天会话窗口约束。 */
+  public async downloadSkin(conversationId: string, resourceId: string): Promise<Uint8Array> {
+    const finalizedSkin = await this.prisma.finalizedSkin.findUnique({
+      where: { id: resourceId },
+      include: { conversation: true },
+    });
+    if (
+      !finalizedSkin ||
+      finalizedSkin.conversationId !== conversationId ||
+      this.isConversationExpired(finalizedSkin.conversation)
+    ) {
+      throw new NotFoundException({
+        code: 'SKIN_RESOURCE_NOT_FOUND',
+        message: '成品不存在',
+      });
+    }
+    try {
+      return await this.storage.get(finalizedSkin.storageKey);
+    } catch {
+      throw new NotFoundException({
+        code: 'SKIN_RESOURCE_NOT_FOUND',
+        message: '成品不存在',
+      });
+    }
+  }
+
+  private isConversationExpired(conversation: { expiresAt: Date }): boolean {
+    return conversation.expiresAt.getTime() <= this.systemClock().now().getTime();
   }
 
   private async resolveReplay<T>(
@@ -378,14 +515,23 @@ export class ConversationService implements OnApplicationShutdown {
     };
   }
 
-  private toJobDto(job: RenderJob & { candidate: { id: string } | null }): JobDto {
+  private toJobDto(
+    job: RenderJob & {
+      candidate: { id: string } | null;
+      conversation: { finalizedSkin: { id: string } | null } | null;
+    },
+  ): JobDto {
     return {
       job_id: job.id,
       kind: job.kind === 'FINALIZE' ? 'finalize' : 'render',
       status: JOB_STATUS_MAP[job.status],
       candidate_id: job.candidate?.id ?? null,
-      // Standalone 模式没有 Community 资源；resource_id 在官方发布集成后接入
-      resource_id: null,
+      // 成功确认的任务引用本仓 FinalizedSkin ID：即公共下载端点的资源标识，
+      // 不伪装 Community 资源 ID（Official 发布集成属后续工作流）
+      resource_id:
+        job.kind === 'FINALIZE' && job.status === 'SUCCEEDED'
+          ? (job.conversation?.finalizedSkin?.id ?? null)
+          : null,
       error_code: job.errorCode ?? null,
       created_at: job.createdAt.toISOString(),
       updated_at: job.updatedAt.toISOString(),

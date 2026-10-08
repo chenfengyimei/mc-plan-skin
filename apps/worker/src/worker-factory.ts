@@ -8,8 +8,9 @@ import {
 } from '@mc-plan/skin-core';
 
 import { processFinalizeJob } from './finalize.processor.js';
+import { parseObjectCleanupPayload } from './payloads.js';
 import { processRenderJob } from './render.processor.js';
-import { runRetentionCleanup } from './retention.processor.js';
+import { runObjectCleanup, runRetentionCleanup } from './retention.processor.js';
 import type { WorkerContext } from './worker-context.js';
 
 export { SKIN_RETRYABLE_JOB_OPTIONS as RETRYABLE_JOB_OPTIONS } from '@mc-plan/skin-core';
@@ -47,7 +48,13 @@ export function createRetentionWorker(
 ): Worker {
   return new Worker(
     QUEUE_NAMES.retentionCleanup,
-    async () => {
+    async (job) => {
+      // 载荷区分两种任务：keys=会话级删除的对象清理重试；空载荷=每小时保留清扫。
+      const data = job.data as Record<string, unknown> | null;
+      if (data && Array.isArray(data.keys)) {
+        await runObjectCleanup(ctx, parseObjectCleanupPayload(data).keys);
+        return;
+      }
       await runRetentionCleanup(ctx);
     },
     { connection, concurrency: 1 },
