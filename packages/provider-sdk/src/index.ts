@@ -137,3 +137,4 @@ export * from './openai-compat-llm-client.js';
 export * from './v4-pipeline.js';
 export * from './image-client.js';
 export * from './vision-client.js';
+export * from './image-concept-provider.js';
