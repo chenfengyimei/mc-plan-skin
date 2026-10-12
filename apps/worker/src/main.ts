@@ -6,8 +6,13 @@ import { SystemClock, FileSystemObjectStorage } from '@mc-plan/skin-core';
 import { createPrismaClient } from '@mc-plan/skin-db';
 import {
   FakeProvider,
+  FixedImageClient,
+  FixedVisionClient,
+  ImageConceptSkinProvider,
   LlmStructuredSkinProvider,
+  OpenAiCompatImageClient,
   OpenAiCompatLlmClient,
+  OpenAiCompatVisionClient,
   type ProviderAdapter,
 } from '@mc-plan/skin-provider-sdk';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
@@ -33,6 +38,10 @@ const logger: Logger = pino({
       'llm.apiKey',
       'llmBaseUrl',
       'llmApiKey',
+      'image.apiKey',
+      'imageApiKey',
+      'vision.apiKey',
+      'visionApiKey',
     ],
     censor: '[REDACTED]',
   },
@@ -62,6 +71,56 @@ function createProvider(): ProviderAdapter {
         defaultTimeoutMs: config.llmTimeoutMs,
         ...(config.llmReasoningEffort ? { reasoningEffort: config.llmReasoningEffort } : {}),
       }),
+    });
+  }
+  if (config.provider === 'image' && config.image && config.vision) {
+    // 概念桥接 Provider：图像客户端与视觉提取客户端都可通过显式 fixture 路径
+    // 注入固定输入（仅演示/测试，SKIN_ENV=production 在适配器构造时拒绝实例化）；
+    // 未注入时必须使用完整远程连接配置，绝不静默回退 Fake Provider。
+    const imageClient = config.imageFixturePath
+      ? new FixedImageClient({ path: config.imageFixturePath })
+      : new OpenAiCompatImageClient({
+          baseUrl: config.image.baseUrl,
+          apiKey: config.image.apiKey,
+          model: config.image.model,
+          defaultTimeoutMs: config.imageTimeoutMs,
+        });
+    const visionClient = config.visionFixturePath
+      ? new FixedVisionClient({ path: config.visionFixturePath })
+      : new OpenAiCompatVisionClient({
+          baseUrl: config.vision.baseUrl,
+          apiKey: config.vision.apiKey,
+          model: config.vision.model,
+          defaultTimeoutMs: config.visionTimeoutMs,
+          ...(config.visionReasoningEffort
+            ? { reasoningEffort: config.visionReasoningEffort }
+            : {}),
+        });
+    logger.info({
+      event: 'provider_selected',
+      result: 'success',
+      provider: 'image-concept',
+      image_model: config.imageFixturePath ? 'fixed-fixture' : config.image.model,
+      image_timeout_ms: config.imageTimeoutMs,
+      ...(config.imageSize ? { image_size: config.imageSize } : {}),
+      vision_model: config.visionFixturePath ? 'fixed-fixture' : config.vision.model,
+      ...(config.visionReasoningEffort
+        ? { vision_reasoning_effort: config.visionReasoningEffort }
+        : {}),
+      ...(config.imageFixturePath
+        ? { image_fixture: config.imageFixturePath.split('/').pop() }
+        : {}),
+      ...(config.visionFixturePath
+        ? { vision_fixture: config.visionFixturePath.split('/').pop() }
+        : {}),
+    });
+    return new ImageConceptSkinProvider({
+      environment: config.env,
+      imageClient,
+      visionClient,
+      ...(config.imageSize ? { imageSize: config.imageSize } : {}),
+      imageTimeoutMs: config.imageTimeoutMs,
+      visionTimeoutMs: config.visionTimeoutMs,
     });
   }
   // Fake Provider 仅在开发/测试环境可用（ADR-0009：生产模式禁止实例化）；
