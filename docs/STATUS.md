@@ -4,9 +4,16 @@
 
 `MCP-F1-SKIN-009`（图像生成模型 Provider 扩展与概念图视觉桥接）已于 2026-10-13 完成：以厂商中立方式交付图像生成接入能力——WORKER_PROVIDERS 扩为 fake|llm|image（fail-closed 启动校验、密钥进 pino redact）、厂商中立 ImageClient 与视觉提取 VisionClient 双注入式抽象（OpenAI 兼容实现 + 显式演示/测试 Fixed fixture 客户端）、ImageConceptSkinProvider 两跳管线（概念图 → 视觉读图提取 v4 蓝图 → 确定性渲染器，复用既有 JSON 提取/色温守门/行补丁精修/边界兜底，失败类别全映射既有标准错误码，生产环境拒绝实例化）、worker image 分支与 Web 三态徽标、start-demo --provider=image 与全离线 e2e 栈、真实 PostgreSQL 三 Provider 同链一致性测试、Playwright image 全链冒烟、Q-001 两路线可比指标口径文档（引用 ADR-0015，图像路线为能力预留）。本切片不实施受控基准（所有者门槛：预算与凭据授权）；F1 正式收官待概念管线受控基准产生候选并通过所有者视觉验收（ADR-0015 变更条件）。
 
+## 收官记录（MCP-F1-SKIN-009，2026-10-13）
+
+- 分支 `feat/MCP-F1-SKIN-009-concept-bridge` 共 11 个提交已 ff-only 合入 main（基线 `8932395` → `b9f0afa`），实现检查点 `0462b20` 经 Foundation 记录 Continue 校验。
+- 交付（厂商中立能力预留）：fake|llm|image Provider 注册与 fail-closed 校验、ImageClient/VisionClient 双注入式抽象（OpenAI 兼容 + Fixed fixture 客户端）、ImageConceptSkinProvider 两跳管线（复用共享 v4 管线：JSON 提取/色温守门/行补丁精修/边界兜底）、worker image 分支、Web 三态 Provider 呈现、`pnpm start:image` 演示入口、全离线 e2e 栈与 image 全链 Playwright 冒烟、三 Provider 真实 PostgreSQL 同链一致性测试、Q-001 两路线可比指标口径文档（引用 ADR-0015）。
+- 门禁（最终实现树 `0462b20` 实跑）：build、check（单测 128、契约零漂移、fixtures 6/6）、`SKIN_E2E_API_PORT=4100 SKIN_E2E_WEB_PORT=3200 pnpm check:full`（api 集成 15/15、worker 集成 12/12、Playwright fake 2/2 + image 1/1）、prisma/migration 校验（零新迁移）全绿；台账在 Foundation 工作流记录与本会话输出目录。
+- 边界如实：本切片零公共契约/Schema/迁移/SDK 改动；未实施受控基准、未发生任何付费模型调用（生产环境继续拒绝非基准适配器实例化）；F1 正式收官待概念管线受控基准产生候选并通过所有者视觉验收（ADR-0015 变更条件）。
+
 ## 收官记录（MCP-F1-SKIN-008，2026-10-12）
 
-- 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4` 共 15 个提交已 ff-only 合入 main（基线 `787bc34` → `4a16eb4`，含 STATUS 收官与 development-plan 治理更正两个 docs 提交）。
+- 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4` 共 15 个提交已 ff-only 合入 main（基线 `787bc34` → `4a16eb4`，含 STATUS 收官与 development-plan 治理更正两个 docs 提交），final_commit `8932395`（main 收官记录段）。
 - 工程交付：离线 Pixel Foundry 工作台（全链 + 刷新恢复 + 桌面/移动）、skin.yaml 0.1.0-alpha.1 匿名窗口生产者（四公共端点 + 保留/级联真实运行）、v4 协议第 1-6 轮（确定性 UV 渲染器 + 色相守门 + 冷色收紧 + 脸可读/雪白高光规格）。
 - 视觉验收（Q-001）未由任何候选通过：flash+high 四次成功评分 1.5/2/4/1；两把交付 key 均无旗舰配额（探测 1113×2）；所有者 2026-10-12 改选概念图管线，视觉验收与两路线可比指标口径移交 `MCP-F1-SKIN-009`。
 - 最终树全量门禁执行台账与收官证据以 Foundation 工作流记录（`memory/workstreams/completed/MCP-F1-SKIN-008.json`）与本会话输出目录 `/Users/chenfeng/.codex/outputs/mc-skin009-20261012/` 为准；基准候选原图与报告在 `/Users/chenfeng/.codex/outputs/mc-skin008-benchmark-20261010/`。
