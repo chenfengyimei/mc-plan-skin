@@ -1,6 +1,8 @@
 # 状态
 
-阶段：F1 受限 Standalone 准备方向（ADR-0009）。工作流 `MCP-F1-SKIN-008`（逐像素皮肤蓝图与动态 3D 预览）已于 2026-10-12 以**工程范围收官**：全部工程交付完成并通过全量门禁——离线 Pixel Foundry 工作台、skin.yaml 0.1.0-alpha.1 匿名窗口生产者、v4 逐像素蓝图协议第 1-6 轮与确定性渲染器。模型视觉验收（Q-001）未由任何候选通过（付费基准 2026-10-10/12：flash+high 四次成功评分 1.5/2/4/1 高方差不可靠；旗舰 glm-5.3 在两把交付 key 上均无配额，error 1113 探测实证，旗舰×新协议组合未获测试窗口），2026-10-12 项目所有者权威决策改选概念图管线，视觉验收连同两路线可比指标口径移交 `MCP-F1-SKIN-009`。各检查点以 Foundation 工作流记录为准。
+阶段：F1 受限 Standalone 准备方向（ADR-0009）。工作流 `MCP-F1-SKIN-008`（逐像素皮肤蓝图与动态 3D 预览）已于 2026-10-12 以**工程范围收官**：全部工程交付完成并通过全量门禁——离线 Pixel Foundry 工作台、skin.yaml 0.1.0-alpha.1 匿名窗口生产者、v4 逐像素蓝图协议第 1-6 轮与确定性渲染器。模型视觉验收（Q-001）未由任何候选通过（付费基准 2026-10-10/12：flash+high 四次成功评分 1.5/2/4/1 高方差不可靠；旗舰 glm-5.3 在两把交付 key 上均无配额，error 1113 探测实证，旗舰×新协议组合未获测试窗口），2026-10-12 项目所有者权威决策改选概念图管线，视觉验收连同两路线可比指标口径移交 `MCP-F1-SKIN-009`（ADR-0015 落档）。各检查点以 Foundation 工作流记录为准。
+
+`MCP-F1-SKIN-009`（图像生成模型 Provider 扩展与概念图视觉桥接）已于 2026-10-13 完成：以厂商中立方式交付图像生成接入能力——WORKER_PROVIDERS 扩为 fake|llm|image（fail-closed 启动校验、密钥进 pino redact）、厂商中立 ImageClient 与视觉提取 VisionClient 双注入式抽象（OpenAI 兼容实现 + 显式演示/测试 Fixed fixture 客户端）、ImageConceptSkinProvider 两跳管线（概念图 → 视觉读图提取 v4 蓝图 → 确定性渲染器，复用既有 JSON 提取/色温守门/行补丁精修/边界兜底，失败类别全映射既有标准错误码，生产环境拒绝实例化）、worker image 分支与 Web 三态徽标、start-demo --provider=image 与全离线 e2e 栈、真实 PostgreSQL 三 Provider 同链一致性测试、Playwright image 全链冒烟、Q-001 两路线可比指标口径文档（引用 ADR-0015，图像路线为能力预留）。本切片不实施受控基准（所有者门槛：预算与凭据授权）；F1 正式收官待概念管线受控基准产生候选并通过所有者视觉验收（ADR-0015 变更条件）。
 
 ## 收官记录（MCP-F1-SKIN-008，2026-10-12）
 
@@ -32,4 +34,4 @@
 
 待决：正式 AI 厂商（Q-001——ADR-0015 已落档路线改选概念图管线，厂商绑定待概念管线受控基准产生候选并通过所有者视觉验收后由新 ADR 决定；两路线可比指标口径见 docs/q-001-route-benchmark.md）、3D 预览库（Q-011，当前为第一方实现）、结构化创作意图字段（Q-012）、模型成本与额外会话积分价格（Q-013）。
 
-下一步：`MCP-F1-SKIN-009`（图像生成模型 Provider 扩展与概念图视觉桥接）——厂商中立的 fake|llm|image Provider 注册、ImageClient 与视觉提取双抽象、概念图→视觉 LLM→v4 蓝图两跳管线适配器，生产环境在基准 ADR 前继续拒绝非基准适配器实例化；Official 权益与 Community 发布阶段见 docs/development-plan.md 固定顺序；SDK skin 表面扩展待生产者证据。基准与付费 key 事实：所有者交付的两把 key 均为 flash 档配额（付费 key 只经 gitignored `apps/worker/.env` 注入，绝不入 Git/日志；本机该文件存在），旗舰探测两次 1113，受控生成预算（≤10、后设 ≤5）从未耗尽，任何候选均未经所有者视觉验收通过。
+下一步：`MCP-F1-SKIN-009` 能力已交付。受控概念管线基准（需所有者授权预算与凭据，key 只经 gitignored `apps/worker/.env` 注入，绝不入 Git/日志；指标口径见 docs/q-001-route-benchmark.md）→ 所有者视觉验收终裁 → 正式厂商绑定由新 ADR 决定（ADR-0015 变更条件）；Official 权益与 Community 发布阶段见 docs/development-plan.md 固定顺序；SDK skin 表面扩展待生产者证据。基准与付费 key 事实：所有者交付的两把 key 均为 flash 档配额，旗舰探测两次 1113，受控生成预算（≤10、后设 ≤5）从未耗尽，任何候选均未经所有者视觉验收通过。
