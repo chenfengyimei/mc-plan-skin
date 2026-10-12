@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { FixedClock, QUEUE_NAMES, candidateStorageKey } from '@mc-plan/skin-core';
 import { createPrismaClient, type PrismaClient } from '@mc-plan/skin-db';
-import { FakeProvider } from '@mc-plan/skin-provider-sdk';
+import {
+  FakeProvider,
+  FixedImageClient,
+  FixedVisionClient,
+  ImageConceptSkinProvider,
+  LlmStructuredSkinProvider,
+  type ProviderAdapter,
+} from '@mc-plan/skin-provider-sdk';
 import { loadFixtureBytes } from '@mc-plan/skin-test-fixtures';
 import { FileSystemObjectStorage } from '@mc-plan/skin-core';
 
@@ -417,6 +424,123 @@ describe('渲染→候选→确认→保留 纵向链路（真实 PostgreSQL）'
       where: { conversationId: conversation.id },
     });
     expect(finals).toHaveLength(0);
+  });
+
+  describe('Provider 适配器业务链路一致性（fake/llm/image 同链）', () => {
+    const fixturesRoot = join(packageRoot, '..', '..', 'packages', 'test-fixtures', 'assets');
+
+    function providerCases(): Array<{ name: string; adapter: ProviderAdapter; callId: RegExp }> {
+      return [
+        {
+          name: 'fake',
+          adapter: new FakeProvider({
+            environment: 'test',
+            resolveFixture: async (request) =>
+              loadFixtureBytes(request.armModel === 'alex' ? 'valid-alex' : 'valid-steve'),
+          }),
+          callId: /^fake-/,
+        },
+        {
+          name: 'llm',
+          adapter: new LlmStructuredSkinProvider({
+            environment: 'test',
+            client: {
+              complete: async () => ({
+                content: await readFile(join(fixturesRoot, 'concept-blueprint.json'), 'utf8'),
+                providerCallId: 'parity-llm',
+                inputUnits: 100,
+                outputUnits: 50,
+              }),
+            },
+          }),
+          callId: /^llm-/,
+        },
+        {
+          name: 'image',
+          adapter: new ImageConceptSkinProvider({
+            environment: 'test',
+            imageClient: new FixedImageClient({ path: join(fixturesRoot, 'concept-explorer.png') }),
+            visionClient: new FixedVisionClient({
+              path: join(fixturesRoot, 'concept-blueprint.json'),
+            }),
+          }),
+          callId: /^img-/,
+        },
+      ];
+    }
+
+    for (const { name, adapter, callId } of providerCases()) {
+      it(`${name}：渲染→候选校验入库→确认成品 全链行为一致（真实 PostgreSQL）`, async () => {
+        const conversation = await seedConversation();
+        const job = await db.renderJob.create({
+          data: {
+            conversationId: conversation.id,
+            attempt: 1,
+            kind: 'RENDER',
+            armModel: 'STEVE',
+            prompt: '雪地探险家',
+          },
+        });
+
+        await processRenderJob(
+          { ...ctx, provider: adapter },
+          {
+            jobId: job.id,
+            conversationId: conversation.id,
+            attempt: 1,
+            armModel: 'steve',
+            prompt: '雪地探险家',
+          },
+          fakeBullJob,
+        );
+
+        const rendered = await db.renderJob.findUniqueOrThrow({
+          where: { id: job.id },
+          include: { candidate: true },
+        });
+        expect(rendered.status).toBe('SUCCEEDED');
+        expect(rendered.providerCallId).toMatch(callId);
+        const candidate = rendered.candidate;
+        expect(candidate).not.toBeNull();
+        expect(candidate?.sha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(candidate?.mediaType).toBe('image/png');
+        expect(candidate?.secondLayer).toBe(true);
+        await expect(ctx.storage.exists(candidate!.storageKey)).resolves.toBe(true);
+
+        // 确认成品：同一业务链路语义（COMPLETED + final 字节与候选一致）
+        await db.conversation.update({
+          where: { id: conversation.id },
+          data: { status: 'FINALIZING' },
+        });
+        const finalizeJob = await db.renderJob.create({
+          data: {
+            conversationId: conversation.id,
+            attempt: 0,
+            kind: 'FINALIZE',
+            armModel: 'STEVE',
+            prompt: `${name} 链路一致性`,
+          },
+        });
+        await processFinalizeJob(
+          { ...ctx, provider: adapter },
+          {
+            jobId: finalizeJob.id,
+            conversationId: conversation.id,
+            candidateId: candidate!.id,
+            title: `${name} parity`,
+            description: `${name} 链路一致性`,
+          },
+        );
+        const completed = await db.conversation.findUniqueOrThrow({
+          where: { id: conversation.id },
+          include: { finalizedSkin: true },
+        });
+        expect(completed.status).toBe('COMPLETED');
+        expect(completed.finalizedSkin?.sha256).toBe(candidate!.sha256);
+        expect(completed.finalizedSkin?.storageKey).toBe(`finals/${conversation.id}.png`);
+        await expect(ctx.storage.exists(`finals/${conversation.id}.png`)).resolves.toBe(true);
+      });
+    }
   });
 });
 
