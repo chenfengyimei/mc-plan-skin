@@ -2,6 +2,13 @@
 
 阶段：F1 受限 Standalone 准备方向（ADR-0009）。工作流 `MCP-F1-SKIN-008`（逐像素皮肤蓝图与动态 3D 预览）已于 2026-10-12 以**工程范围收官**：全部工程交付完成并通过全量门禁——离线 Pixel Foundry 工作台、skin.yaml 0.1.0-alpha.1 匿名窗口生产者、v4 逐像素蓝图协议第 1-6 轮与确定性渲染器。模型视觉验收（Q-001）未由任何候选通过（付费基准 2026-10-10/12：flash+high 四次成功评分 1.5/2/4/1 高方差不可靠；旗舰 glm-5.3 在两把交付 key 上均无配额，error 1113 探测实证，旗舰×新协议组合未获测试窗口），2026-10-12 项目所有者权威决策改选概念图管线，视觉验收连同两路线可比指标口径移交 `MCP-F1-SKIN-009`。各检查点以 Foundation 工作流记录为准。
 
+## 收官记录（MCP-F1-SKIN-008，2026-10-12）
+
+- 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4` 共 15 个提交已 ff-only 合入 main（基线 `787bc34` → `4a16eb4`，含 STATUS 收官与 development-plan 治理更正两个 docs 提交）。
+- 工程交付：离线 Pixel Foundry 工作台（全链 + 刷新恢复 + 桌面/移动）、skin.yaml 0.1.0-alpha.1 匿名窗口生产者（四公共端点 + 保留/级联真实运行）、v4 协议第 1-6 轮（确定性 UV 渲染器 + 色相守门 + 冷色收紧 + 脸可读/雪白高光规格）。
+- 视觉验收（Q-001）未由任何候选通过：flash+high 四次成功评分 1.5/2/4/1；两把交付 key 均无旗舰配额（探测 1113×2）；所有者 2026-10-12 改选概念图管线，视觉验收与两路线可比指标口径移交 `MCP-F1-SKIN-009`。
+- 最终树全量门禁执行台账与收官证据以 Foundation 工作流记录（`memory/workstreams/completed/MCP-F1-SKIN-008.json`）与本会话输出目录 `/Users/chenfeng/.codex/outputs/mc-skin009-20261012/` 为准；基准候选原图与报告在 `/Users/chenfeng/.codex/outputs/mc-skin008-benchmark-20261010/`。
+
 实现：Standalone 最小纵向链路（SKIN-002）→ 契约无关硬化（SKIN-003）→ 候选预览接线与 v2/v3 渲染器演进（SKIN-004~007）→ 逐像素蓝图 v4 与第一方 3D 动态预览（SKIN-008 分支 `feat/MCP-F1-SKIN-008-pixel-blueprint-v4`）→ 0.1.0-alpha.1 匿名窗口生产者（2026-10-08 所有者授权的范围扩展）。
 
 工程骨架：pnpm workspace（apps/web Next.js 16、apps/api NestJS 12、apps/worker BullMQ 6；packages/config、contracts、skin-core、skin-validator、provider-sdk、test-fixtures、db）。TypeScript 严格模式、ESLint/Prettier、pino 结构化日志、私有健康探针、环境变量 Schema 验证、Prisma 7/PostgreSQL（2 个前向迁移）、Vitest 单测、testcontainers 集成测试、Playwright 冒烟、契约类型生成与 Minecraft 皮肤 fixture 校验均已实际运行通过。
