@@ -30,6 +30,92 @@ export class LlmClientError extends Error {
   }
 }
 
+const COLD_PROMPT_WORDS = [
+  '雪',
+  '冰',
+  '霜',
+  '蓝',
+  '青',
+  '白',
+  '冷',
+  'snow',
+  'ice',
+  'frost',
+  'blue',
+  'cyan',
+  'white',
+  'cold',
+];
+
+const WARM_PROMPT_WORDS = [
+  '沙',
+  '漠',
+  '暖',
+  '红',
+  '橙',
+  '棕',
+  '黄',
+  'sand',
+  'desert',
+  'warm',
+  'red',
+  'orange',
+  'brown',
+];
+
+/** 描述色温意图：与关键词表匹配则返回 'cold' / 'warm'，否则 null（不设约束）。 */
+function promptColorIntention(prompt: string): 'cold' | 'warm' | null {
+  const cold = COLD_PROMPT_WORDS.some((word) => prompt.includes(word));
+  const warm = WARM_PROMPT_WORDS.some((word) => prompt.includes(word));
+  if (cold && !warm) return 'cold';
+  if (warm && !cold) return 'warm';
+  return null;
+}
+
+function hueOf(hex: string): number {
+  const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
+  const g = Number.parseInt(hex.slice(3, 5), 16) / 255;
+  const b = Number.parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) return -1;
+  const delta = max - min;
+  let hue: number;
+  if (max === r) hue = ((g - b) / delta) % 6;
+  else if (max === g) hue = (b - r) / delta + 2;
+  else hue = (r - g) / delta + 4;
+  return (hue * 60 + 360) % 360;
+}
+
+/**
+ * 描述-调色板色相一致性守门（v4 协议第四轮强化）：描述为强冷色主题时
+ * palette 不得整体偏暖（红/橙/黄主导），反之亦然。只约束色温族而不
+ * 规定具体颜色，避免把任何模板注入设计空间。返回 null 表示通过。
+ */
+function paletteHueGuard(prompt: string, design: SkinDesign): string | null {
+  const intention = promptColorIntention(prompt);
+  if (!intention) return null;
+
+  let warm = 0;
+  let cold = 0;
+  for (const hex of Object.values(design.palette)) {
+    const hue = hueOf(hex);
+    if (hue < 0) continue;
+    if (hue < 70 || hue >= 300) warm += 1;
+    else if (hue >= 150 && hue < 300) cold += 1;
+  }
+  const total = warm + cold;
+  if (total === 0) return null;
+
+  if (intention === 'cold' && warm > cold) {
+    return `调色板色温与描述冲突：描述为冷色主题，但调色板中红/橙/黄暖色 ${warm} 个多于蓝/青冷色 ${cold} 个；请把 palette 与网格整体改为冷色系（雪白、冰蓝、青灰），移除暖沙/棕/橙主导色`;
+  }
+  if (intention === 'warm' && cold > warm) {
+    return `调色板色温与描述冲突：描述为暖色主题，但调色板中蓝/青冷色 ${cold} 个多于红/橙/黄暖色 ${warm} 个；请把 palette 与网格整体改为暖色系，移除冷蓝主导色`;
+  }
+  return null;
+}
+
 function providerFailure(error: unknown): ProviderGenerationResult {
   const category =
     error instanceof LlmClientError
@@ -58,7 +144,7 @@ const DESIGN_SYSTEM_PROMPT = [
   '你是 Minecraft Java 版 64×64 皮肤的像素设计师。',
   '根据用户描述亲自画出每个身体部件的像素蓝图，只输出一个 JSON 对象，不要解释或使用代码块。',
   '不要套用固定服装版型：发型、脸、轮廓、服装分区、饰物和不对称细节都必须直接体现在网格字符里。',
-  '先逐词收集用户描述中的颜色词与服饰主题词，并为每个词指定落点：palette 必须直接服务这些词与描述场景（冷色场景用冷色系、暖色场景用暖色系），禁止替换成与描述无关的通用配色；concept 的 signature_details 逐词对应这些词，最终网格必须逐词自检落实。',
+  '先逐词收集用户描述中的颜色词与服饰主题词，并为每个词指定落点：palette 必须直接服务这些词与描述场景（冷色场景用冷色系、暖色场景用暖色系），禁止替换成与描述无关的通用配色；concept 的 signature_details 逐词对应这些词，最终网格必须逐词自检落实。每个颜色词必须直接成为 palette 成员：例如描述含"蓝"则 palette 至少一个蓝色成员且该字符真实出现在网格；冷色场景（雪、冰、霜、夜、海）禁止红/橙/黄/棕暖色超过半数，暖色场景（沙、火、暖阳）禁止蓝/青冷色超过半数。',
   'JSON 顶层必须且只能包含 version、concept、palette、base、front、back、overlay_front、overlay_back。version 固定为 4。',
   'concept 先完成设计推理，包含 silhouette（轮廓）、outfit（完整穿搭）和 signature_details（3-5 个独有细节字符串）。这些内容必须在后续像素中真实出现。',
   'palette 是 6-16 个颜色，键只能用 A 到 P 的单字符，值必须是 #RRGGBB，例如 {"A":"#F1C7AE","B":"#A52D38"}。',
@@ -298,6 +384,17 @@ export class LlmStructuredSkinProvider {
       // 只有在解析不出任何蓝图时才把响应定性为拒答，避免前言误杀有效输出。
       const parsed = parseDraft(lastCompletion.content);
       if (parsed.success) {
+        // v4 协议第四轮强化：草稿一旦与描述色温冲突，第二次（最后一次）
+        // 草稿机会专门用于修复调色板；仍冲突则接受草稿继续后续质量流程。
+        const hueConflict = paletteHueGuard(request.prompt, parsed.design);
+        if (hueConflict && pass === 0) {
+          draftPrompt = [
+            userPrompt,
+            '上一份蓝图的调色板与描述色温冲突，请从头重画并修复：',
+            hueConflict,
+          ].join('\n');
+          continue;
+        }
         draft = parsed.design;
         break;
       }

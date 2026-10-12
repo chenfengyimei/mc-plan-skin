@@ -435,4 +435,68 @@ describe('LlmStructuredSkinProvider', () => {
     expect(systems[1]).toContain('不得把描述的主题色替换成通用配色');
     expect(systems[1]).toContain('front 与 overlay 的外边缘必须对齐');
   });
+
+  it('v4 第四轮强化：冷色描述配暖色调色板时携带色温反馈重画一次', async () => {
+    const warmDesign = JSON.parse(goodDesignJson) as Record<string, unknown>;
+    warmDesign.palette = {
+      A: '#E8B08A',
+      B: '#B52B38',
+      C: '#D97B29',
+      D: '#8C4A2B',
+      E: '#5C3A21',
+      F: '#F2D16B',
+    };
+    let calls = 0;
+    let redrawPrompt = '';
+    const provider = new LlmStructuredSkinProvider({
+      environment: 'test',
+      client: {
+        complete: async (options) => {
+          calls += 1;
+          if (calls === 2) redrawPrompt = options.user;
+          return {
+            content: calls === 1 ? JSON.stringify(warmDesign) : goodDesignJson,
+            providerCallId: `resp-${calls}`,
+            inputUnits: 100,
+            outputUnits: 50,
+          };
+        },
+      },
+    });
+
+    const result = await provider.generate({
+      ...request,
+      prompt: '雪地探险家，加深蓝色围巾',
+    });
+    expect(result.status).toBe('succeeded');
+    expect(calls).toBe(2);
+    expect(redrawPrompt).toContain('调色板与描述色温冲突');
+    expect(redrawPrompt).toContain('冷色系');
+    expect(redrawPrompt).toContain('雪地探险家');
+  });
+
+  it('v4 第四轮强化：平衡调色板不触发色温重画（单次调用直通）', async () => {
+    let calls = 0;
+    const provider = new LlmStructuredSkinProvider({
+      environment: 'test',
+      client: {
+        complete: async () => {
+          calls += 1;
+          return {
+            content: goodDesignJson,
+            providerCallId: 'resp-1',
+            inputUnits: 100,
+            outputUnits: 50,
+          };
+        },
+      },
+    });
+
+    const result = await provider.generate({
+      ...request,
+      prompt: '雪地探险家，加深蓝色围巾',
+    });
+    expect(result.status).toBe('succeeded');
+    expect(calls).toBe(1);
+  });
 });
