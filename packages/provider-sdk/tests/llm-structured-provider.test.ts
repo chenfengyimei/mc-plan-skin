@@ -499,4 +499,42 @@ describe('LlmStructuredSkinProvider', () => {
     expect(result.status).toBe('succeeded');
     expect(calls).toBe(1);
   });
+
+  it('v4 第五轮强化：海泡绿+棕的假冷色调色板同样触发色温重画', async () => {
+    const fakeColdDesign = JSON.parse(goodDesignJson) as Record<string, unknown>;
+    // 青绿（hue≈160°）在视觉与语义上都不是雪蓝冷色，配棕后必须被守门拦截。
+    fakeColdDesign.palette = {
+      A: '#E8B08A',
+      B: '#B52B38',
+      C: '#A8C8B8',
+      D: '#6B8F71',
+      E: '#5C3A21',
+      F: '#F2D16B',
+    };
+    let calls = 0;
+    let redrawPrompt = '';
+    const provider = new LlmStructuredSkinProvider({
+      environment: 'test',
+      client: {
+        complete: async (options) => {
+          calls += 1;
+          if (calls === 2) redrawPrompt = options.user;
+          return {
+            content: calls === 1 ? JSON.stringify(fakeColdDesign) : goodDesignJson,
+            providerCallId: `resp-${calls}`,
+            inputUnits: 100,
+            outputUnits: 50,
+          };
+        },
+      },
+    });
+
+    const result = await provider.generate({
+      ...request,
+      prompt: '雪地探险家，加深蓝色围巾',
+    });
+    expect(result.status).toBe('succeeded');
+    expect(calls).toBe(2);
+    expect(redrawPrompt).toContain('绿色与沙色不算冷色');
+  });
 });

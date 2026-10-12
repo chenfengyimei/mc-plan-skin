@@ -88,9 +88,11 @@ function hueOf(hex: string): number {
 }
 
 /**
- * 描述-调色板色相一致性守门（v4 协议第四轮强化）：描述为强冷色主题时
- * palette 不得整体偏暖（红/橙/黄主导），反之亦然。只约束色温族而不
- * 规定具体颜色，避免把任何模板注入设计空间。返回 null 表示通过。
+ * 描述-调色板色相一致性守门（v4 协议第四/五轮强化）：描述为强冷色主题时
+ * palette 不得整体偏暖（红/橙/黄/棕主导），反之亦然。冷色只承认蓝-青蓝
+ * 区（约 190°-290°）与高亮度低饱和的雪白；绿色与沙色不算冷色，防止
+ * “海泡绿+棕”式的假冷色绕行。只约束色温族而不规定具体颜色，避免把
+ * 任何模板注入设计空间。返回 null 表示通过。
  */
 function paletteHueGuard(prompt: string, design: SkinDesign): string | null {
   const intention = promptColorIntention(prompt);
@@ -99,16 +101,28 @@ function paletteHueGuard(prompt: string, design: SkinDesign): string | null {
   let warm = 0;
   let cold = 0;
   for (const hex of Object.values(design.palette)) {
+    const r = Number.parseInt(hex.slice(1, 3), 16) / 255;
+    const g = Number.parseInt(hex.slice(3, 5), 16) / 255;
+    const b = Number.parseInt(hex.slice(5, 7), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max === 0 ? 0 : (max - min) / max;
     const hue = hueOf(hex);
     if (hue < 0) continue;
+    // 雪白/冰白（高亮度低饱和）在任何色相下都支持冷色场景。
+    if (intention === 'cold' && max > 0.8 && saturation < 0.3) {
+      cold += 1;
+      continue;
+    }
     if (hue < 70 || hue >= 300) warm += 1;
-    else if (hue >= 150 && hue < 300) cold += 1;
+    else if (hue >= 190 && hue < 290) cold += 1;
+    // 70°-190°（黄/黄绿/绿/黄沙区）与 290°-300° 不计入任何一方。
   }
   const total = warm + cold;
   if (total === 0) return null;
 
   if (intention === 'cold' && warm > cold) {
-    return `调色板色温与描述冲突：描述为冷色主题，但调色板中红/橙/黄暖色 ${warm} 个多于蓝/青冷色 ${cold} 个；请把 palette 与网格整体改为冷色系（雪白、冰蓝、青灰），移除暖沙/棕/橙主导色`;
+    return `调色板色温与描述冲突：描述为冷色主题，但调色板中红/橙/黄/棕暖色 ${warm} 个多于真正的冷色（蓝/青蓝/雪白）${cold} 个；绿色与沙色不算冷色。请把 palette 与网格整体改为冷色系（雪白、冰蓝、蓝灰），移除暖沙/棕/橙主导色`;
   }
   if (intention === 'warm' && cold > warm) {
     return `调色板色温与描述冲突：描述为暖色主题，但调色板中蓝/青冷色 ${cold} 个多于红/橙/黄暖色 ${warm} 个；请把 palette 与网格整体改为暖色系，移除冷蓝主导色`;
@@ -144,7 +158,7 @@ const DESIGN_SYSTEM_PROMPT = [
   '你是 Minecraft Java 版 64×64 皮肤的像素设计师。',
   '根据用户描述亲自画出每个身体部件的像素蓝图，只输出一个 JSON 对象，不要解释或使用代码块。',
   '不要套用固定服装版型：发型、脸、轮廓、服装分区、饰物和不对称细节都必须直接体现在网格字符里。',
-  '先逐词收集用户描述中的颜色词与服饰主题词，并为每个词指定落点：palette 必须直接服务这些词与描述场景（冷色场景用冷色系、暖色场景用暖色系），禁止替换成与描述无关的通用配色；concept 的 signature_details 逐词对应这些词，最终网格必须逐词自检落实。每个颜色词必须直接成为 palette 成员：例如描述含"蓝"则 palette 至少一个蓝色成员且该字符真实出现在网格；冷色场景（雪、冰、霜、夜、海）禁止红/橙/黄/棕暖色超过半数，暖色场景（沙、火、暖阳）禁止蓝/青冷色超过半数。',
+  '先逐词收集用户描述中的颜色词与服饰主题词，并为每个词指定落点：palette 必须直接服务这些词与描述场景（冷色场景用冷色系、暖色场景用暖色系），禁止替换成与描述无关的通用配色；concept 的 signature_details 逐词对应这些词，最终网格必须逐词自检落实。每个颜色词必须直接成为 palette 成员：例如描述含"蓝"则 palette 至少一个蓝色成员且该字符真实出现在网格。冷色场景（雪、冰、霜、夜、海）的 palette 必须以蓝、青蓝与雪白为主：绿色、青绿、沙色与棕色都不算冷色；红/橙/黄/棕暖色禁止超过半数。暖色场景（沙、火、暖阳）禁止蓝/青冷色超过半数。',
   'JSON 顶层必须且只能包含 version、concept、palette、base、front、back、overlay_front、overlay_back。version 固定为 4。',
   'concept 先完成设计推理，包含 silhouette（轮廓）、outfit（完整穿搭）和 signature_details（3-5 个独有细节字符串）。这些内容必须在后续像素中真实出现。',
   'palette 是 6-16 个颜色，键只能用 A 到 P 的单字符，值必须是 #RRGGBB，例如 {"A":"#F1C7AE","B":"#A52D38"}。',
