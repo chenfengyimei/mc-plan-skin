@@ -147,6 +147,143 @@ describe('worker 配置', () => {
   });
 });
 
+describe('image provider 配置（fake|llm|image 第三类 Provider）', () => {
+  const base = {
+    SKIN_DATABASE_URL: 'postgresql://user:pass@127.0.0.1:5432/skin',
+    SKIN_REDIS_URL: 'redis://127.0.0.1:6379',
+  };
+  const imageTrio = {
+    SKIN_IMAGE_BASE_URL: 'https://image.example.invalid/v1',
+    SKIN_IMAGE_API_KEY: 'local-image-secret',
+    SKIN_IMAGE_MODEL: 'image-model-x',
+  };
+  const llmTrio = {
+    SKIN_LLM_BASE_URL: 'https://llm.example.invalid/v1',
+    SKIN_LLM_API_KEY: 'local-llm-secret',
+    SKIN_LLM_MODEL: 'vision-model-y',
+  };
+  const visionTrio = {
+    SKIN_VISION_BASE_URL: 'https://vision.example.invalid/v1',
+    SKIN_VISION_API_KEY: 'local-vision-secret',
+    SKIN_VISION_MODEL: 'vision-model-z',
+  };
+
+  it('SKIN_PROVIDER=image 缺图像与视觉配置时以字段名失败且不回显密钥值', () => {
+    try {
+      loadWorkerConfig({ ...base, SKIN_PROVIDER: 'image' });
+      expect.unreachable('缺配置应当失败');
+    } catch (error) {
+      const configError = error as ConfigError;
+      const fields = configError.issues.map((issue) => issue.field);
+      expect(fields).toContain('SKIN_IMAGE_BASE_URL');
+      expect(fields).toContain('SKIN_IMAGE_API_KEY');
+      expect(fields).toContain('SKIN_IMAGE_MODEL');
+      expect(fields).toContain('SKIN_VISION_BASE_URL');
+      expect(configError.message).not.toContain('image.example');
+      expect(configError.message).not.toContain('secret');
+    }
+  });
+
+  it('图像三件套 + 复用 SKIN_LLM_* 通道通过，视觉配置逐项继承', () => {
+    const config = loadWorkerConfig({ ...base, SKIN_PROVIDER: 'image', ...imageTrio, ...llmTrio });
+    expect(config.image?.baseUrl).toBe(imageTrio.SKIN_IMAGE_BASE_URL);
+    expect(config.image?.model).toBe(imageTrio.SKIN_IMAGE_MODEL);
+    expect(config.vision?.baseUrl).toBe(llmTrio.SKIN_LLM_BASE_URL);
+    expect(config.vision?.apiKey).toBe(llmTrio.SKIN_LLM_API_KEY);
+    expect(config.vision?.model).toBe(llmTrio.SKIN_LLM_MODEL);
+    expect(config.llm).toBeNull();
+  });
+
+  it('SKIN_VISION_* 独立配置优先于 SKIN_LLM_* 复用', () => {
+    const config = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      ...imageTrio,
+      ...llmTrio,
+      ...visionTrio,
+    });
+    expect(config.vision?.baseUrl).toBe(visionTrio.SKIN_VISION_BASE_URL);
+    expect(config.vision?.model).toBe(visionTrio.SKIN_VISION_MODEL);
+  });
+
+  it('SKIN_VISION_REASONING_EFFORT 覆盖继承自 SKIN_LLM_REASONING_EFFORT 的默认', () => {
+    const config = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      ...imageTrio,
+      ...llmTrio,
+      SKIN_LLM_REASONING_EFFORT: 'high',
+      SKIN_VISION_REASONING_EFFORT: 'low',
+    });
+    expect(config.visionReasoningEffort).toBe('low');
+    const inherited = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      ...imageTrio,
+      ...llmTrio,
+      SKIN_LLM_REASONING_EFFORT: 'high',
+    });
+    expect(inherited.visionReasoningEffort).toBe('high');
+  });
+
+  it('图像与视觉超时：图像默认 120 秒，视觉缺省回落 LLM 超时', () => {
+    const config = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      ...imageTrio,
+      ...llmTrio,
+    });
+    expect(config.imageTimeoutMs).toBe(120_000);
+    expect(config.visionTimeoutMs).toBe(30_000);
+    const tuned = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      ...imageTrio,
+      ...llmTrio,
+      SKIN_IMAGE_TIMEOUT_MS: '300000',
+      SKIN_VISION_TIMEOUT_MS: '180000',
+      SKIN_LLM_TIMEOUT_MS: '90000',
+    });
+    expect(tuned.imageTimeoutMs).toBe(300_000);
+    expect(tuned.visionTimeoutMs).toBe(180_000);
+  });
+
+  it('SKIN_IMAGE_SIZE 必须是 宽x高 形式', () => {
+    const env = { ...base, SKIN_PROVIDER: 'image', ...imageTrio, ...llmTrio };
+    expect(loadWorkerConfig({ ...env, SKIN_IMAGE_SIZE: '1024x1024' }).imageSize).toBe('1024x1024');
+    expect(() => loadWorkerConfig({ ...env, SKIN_IMAGE_SIZE: 'big' })).toThrow(ConfigError);
+    expect(() => loadWorkerConfig({ ...env, SKIN_IMAGE_SIZE: '0x0' })).toThrow(ConfigError);
+  });
+
+  it('固定概念图/蓝图 fixture 路径豁免连接配置（显式演示/测试注入点）', () => {
+    const config = loadWorkerConfig({
+      ...base,
+      SKIN_PROVIDER: 'image',
+      SKIN_IMAGE_FIXTURE_PATH: '/absolute/concept.png',
+      SKIN_VISION_FIXTURE_PATH: '/absolute/blueprint.json',
+    });
+    expect(config.imageFixturePath).toBe('/absolute/concept.png');
+    expect(config.visionFixturePath).toBe('/absolute/blueprint.json');
+    expect(config.image?.baseUrl).toBe('');
+  });
+
+  it('视觉通道不完整时仍失败：只给 SKIN_LLM_BASE_URL 不构成可复用通道', () => {
+    try {
+      loadWorkerConfig({
+        ...base,
+        SKIN_PROVIDER: 'image',
+        ...imageTrio,
+        SKIN_LLM_BASE_URL: llmTrio.SKIN_LLM_BASE_URL,
+      });
+      expect.unreachable('视觉通道不完整应当失败');
+    } catch (error) {
+      const configError = error as ConfigError;
+      expect(configError.issues.map((issue) => issue.field)).toContain('SKIN_VISION_API_KEY');
+      expect(configError.issues.map((issue) => issue.field)).not.toContain('SKIN_IMAGE_BASE_URL');
+    }
+  });
+});
+
 describe('跨配置规则', () => {
   it('official 模式对 API 与 worker 一致要求 Core 基址', () => {
     const env = {

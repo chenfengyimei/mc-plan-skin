@@ -45,6 +45,30 @@ const candidateRetentionHoursSchema = z.coerce.number().int().min(1).max(720).de
  */
 const llmTimeoutMsSchema = z.coerce.number().int().min(1_000).max(600_000).default(30_000);
 
+/**
+ * 单次图像生成调用超时（毫秒）。图像生成普遍慢于文本补全，默认放宽到 120 秒；
+ * 上限与 LLM 通道一致，由部署者按厂商实测调整。
+ */
+const imageTimeoutMsSchema = z.coerce.number().int().min(1_000).max(600_000).default(120_000);
+
+/** 概念图尺寸（如 1024x1024）；不设则使用厂商默认尺寸。 */
+const imageSizeSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{2,4}x\d{2,4}$/, {
+    message: '必须是 宽x高 形式，例如 1024x1024',
+  })
+  .optional()
+  .transform((value) => (value === '' ? undefined : value));
+
+/** 演示/测试专用的固定输入注入路径；不设则使用真实远程客户端。 */
+const fixturePathSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .optional()
+  .transform((value) => (value === '' ? undefined : value));
+
 const baseConfigSchema = z.object({
   SKIN_RUN_MODE: runModeSchema,
   SKIN_ENV: envSchema,
@@ -94,7 +118,7 @@ export const apiConfigSchema = baseConfigSchema
   })
   .superRefine(requireOfficialCoreUrl);
 
-export const WORKER_PROVIDERS = ['fake', 'llm'] as const;
+export const WORKER_PROVIDERS = ['fake', 'llm', 'image'] as const;
 export type WorkerProvider = (typeof WORKER_PROVIDERS)[number];
 
 export const workerConfigSchema = baseConfigSchema
@@ -125,6 +149,26 @@ export const workerConfigSchema = baseConfigSchema
       .max(16)
       .optional()
       .transform((value) => (value === '' ? undefined : value)),
+    // 图像生成通道（SKIN_PROVIDER=image 必需，除非注入概念图 fixture）。
+    SKIN_IMAGE_BASE_URL: z.string().optional(),
+    SKIN_IMAGE_API_KEY: z.string().optional(),
+    SKIN_IMAGE_MODEL: z.string().optional(),
+    SKIN_IMAGE_SIZE: imageSizeSchema,
+    SKIN_IMAGE_TIMEOUT_MS: imageTimeoutMsSchema,
+    SKIN_IMAGE_FIXTURE_PATH: fixturePathSchema,
+    // 视觉提取通道：可选独立 SKIN_VISION_*；缺省逐项复用 SKIN_LLM_* 同名变量。
+    SKIN_VISION_BASE_URL: z.string().optional(),
+    SKIN_VISION_API_KEY: z.string().optional(),
+    SKIN_VISION_MODEL: z.string().optional(),
+    SKIN_VISION_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).optional(),
+    SKIN_VISION_REASONING_EFFORT: z
+      .string()
+      .trim()
+      .min(1)
+      .max(16)
+      .optional()
+      .transform((value) => (value === '' ? undefined : value)),
+    SKIN_VISION_FIXTURE_PATH: fixturePathSchema,
   })
   .superRefine((value, ctx) => {
     requireOfficialCoreUrl(value, ctx);
@@ -138,6 +182,40 @@ export const workerConfigSchema = baseConfigSchema
           path: [field],
           message: `SKIN_PROVIDER=llm 需要 ${field}（LLM 连接配置；密钥不会进日志）`,
         });
+      }
+    }
+    if (value.SKIN_PROVIDER === 'image') {
+      // 图像通道：除非显式注入固定概念图（仅演示/测试），否则必须提供完整连接三件套。
+      if (!value.SKIN_IMAGE_FIXTURE_PATH) {
+        const missingImage = (
+          ['SKIN_IMAGE_BASE_URL', 'SKIN_IMAGE_API_KEY', 'SKIN_IMAGE_MODEL'] as const
+        ).filter((field) => !value[field]);
+        for (const field of missingImage) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [field],
+            message: `SKIN_PROVIDER=image 需要 ${field}（图像生成连接配置；密钥不会进日志；或设置 SKIN_IMAGE_FIXTURE_PATH 注入固定概念图用于演示/测试）`,
+          });
+        }
+      }
+      // 视觉提取通道：显式 SKIN_VISION_* 三件套或完整复用 SKIN_LLM_* 三件套，
+      // 二者都不完整时逐项指出缺失字段；固定蓝图 fixture（仅演示/测试）可豁免。
+      if (!value.SKIN_VISION_FIXTURE_PATH) {
+        const visionComplete = Boolean(
+          value.SKIN_VISION_BASE_URL && value.SKIN_VISION_API_KEY && value.SKIN_VISION_MODEL,
+        );
+        const llmComplete = Boolean(
+          value.SKIN_LLM_BASE_URL && value.SKIN_LLM_API_KEY && value.SKIN_LLM_MODEL,
+        );
+        if (!visionComplete && !llmComplete) {
+          for (const field of ['SKIN_VISION_BASE_URL', 'SKIN_VISION_API_KEY', 'SKIN_VISION_MODEL'] as const) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [field],
+              message: `SKIN_PROVIDER=image 需要 ${field}（视觉提取通道配置），或提供完整 SKIN_LLM_* 三件套以复用文本通道（密钥不会进日志；或设置 SKIN_VISION_FIXTURE_PATH 注入固定蓝图用于演示/测试）`,
+            });
+          }
+        }
       }
     }
   });
@@ -157,6 +235,12 @@ export type ApiConfig = {
   candidateStorageRoot: string;
 };
 
+export interface RemoteChannelConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
 export type WorkerConfig = {
   runMode: RunMode;
   env: SkinEnv;
@@ -171,11 +255,15 @@ export type WorkerConfig = {
   provider: WorkerProvider;
   llmTimeoutMs: number;
   llmReasoningEffort?: string | undefined;
-  llm: {
-    baseUrl: string;
-    apiKey: string;
-    model: string;
-  } | null;
+  llm: RemoteChannelConfig | null;
+  imageTimeoutMs: number;
+  imageSize?: string | undefined;
+  imageFixturePath?: string | undefined;
+  image: RemoteChannelConfig | null;
+  visionTimeoutMs: number;
+  visionReasoningEffort?: string | undefined;
+  visionFixturePath?: string | undefined;
+  vision: RemoteChannelConfig | null;
 };
 
 function toIssues(error: z.ZodError): ReadonlyArray<{ field: string; message: string }> {
@@ -215,6 +303,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     throw new ConfigError(toIssues(parsed.error));
   }
   const value = parsed.data;
+  const channel = (explicit: string | undefined, fallback: string | undefined): string => explicit ?? fallback ?? '';
   return {
     runMode: value.SKIN_RUN_MODE,
     env: value.SKIN_ENV,
@@ -235,6 +324,29 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
             baseUrl: value.SKIN_LLM_BASE_URL ?? '',
             apiKey: value.SKIN_LLM_API_KEY ?? '',
             model: value.SKIN_LLM_MODEL ?? '',
+          }
+        : null,
+    imageTimeoutMs: value.SKIN_IMAGE_TIMEOUT_MS,
+    imageSize: value.SKIN_IMAGE_SIZE,
+    imageFixturePath: value.SKIN_IMAGE_FIXTURE_PATH,
+    image:
+      value.SKIN_PROVIDER === 'image'
+        ? {
+            baseUrl: value.SKIN_IMAGE_BASE_URL ?? '',
+            apiKey: value.SKIN_IMAGE_API_KEY ?? '',
+            model: value.SKIN_IMAGE_MODEL ?? '',
+          }
+        : null,
+    visionTimeoutMs: value.SKIN_VISION_TIMEOUT_MS ?? value.SKIN_LLM_TIMEOUT_MS,
+    visionReasoningEffort:
+      value.SKIN_VISION_REASONING_EFFORT ?? value.SKIN_LLM_REASONING_EFFORT,
+    visionFixturePath: value.SKIN_VISION_FIXTURE_PATH,
+    vision:
+      value.SKIN_PROVIDER === 'image'
+        ? {
+            baseUrl: channel(value.SKIN_VISION_BASE_URL, value.SKIN_LLM_BASE_URL),
+            apiKey: channel(value.SKIN_VISION_API_KEY, value.SKIN_LLM_API_KEY),
+            model: channel(value.SKIN_VISION_MODEL, value.SKIN_LLM_MODEL),
           }
         : null,
   };
