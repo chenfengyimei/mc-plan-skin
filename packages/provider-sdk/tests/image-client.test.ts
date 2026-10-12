@@ -28,7 +28,10 @@ afterEach(() => {
 
 describe('OpenAiCompatImageClient', () => {
   it('请求 images/generations 并解码 b64_json 概念图字节', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => b64Response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => b64Response()),
+    );
     const client = new OpenAiCompatImageClient({
       baseUrl: 'https://image.example.invalid/v1',
       apiKey: 'test-key',
@@ -49,7 +52,10 @@ describe('OpenAiCompatImageClient', () => {
   });
 
   it('可选 size 透传为请求体字段', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => b64Response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => b64Response()),
+    );
     const client = new OpenAiCompatImageClient({
       baseUrl: 'https://image.example.invalid/v1',
       apiKey: 'test-key',
@@ -85,10 +91,13 @@ describe('OpenAiCompatImageClient', () => {
   it('只有 url 的兼容端点走显式下载并映射下载失败为不可用', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input?: RequestInfo | URL) => {
+      vi.fn(async (input?: unknown) => {
         if (String(input).includes('/images/generations')) {
           return new Response(
-            JSON.stringify({ created: 7, data: [{ url: 'https://cdn.example.invalid/concept.png' }] }),
+            JSON.stringify({
+              created: 7,
+              data: [{ url: 'https://cdn.example.invalid/concept.png' }],
+            }),
             { status: 200 },
           );
         }

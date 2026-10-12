@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { validateSkinImage } from '@mc-plan/skin-validator';
 
-import { ImageClientError } from '../src/image-client.js';
-import { ImageConceptSkinProvider, type ImageClient } from '../src/image-concept-provider.js';
+import { ImageClientError, type ImageClient } from '../src/image-client.js';
+import { ImageConceptSkinProvider } from '../src/image-concept-provider.js';
 import { LlmClientError } from '../src/llm-structured-provider.js';
 import type { VisionClient } from '../src/vision-client.js';
 import type { ProviderGenerationRequest } from '../src/index.js';
@@ -164,6 +164,7 @@ function visionScript(responses: Array<string | Error>): {
         images.push(options.image);
         const item = responses[Math.min(calls - 1, responses.length - 1)];
         if (item instanceof Error) throw item;
+        if (item === undefined) throw new Error('scripted vision response exhausted');
         return {
           content: item,
           providerCallId: `vision-${calls}`,
@@ -271,8 +272,9 @@ describe('ImageConceptSkinProvider（概念图→视觉提取→v4 蓝图两跳�
     const provider = new ImageConceptSkinProvider({
       environment: 'test',
       imageClient: imageClientSpy(),
-      visionClient: visionScript([`抱歉，我无法直接绘制图像，但可以用网格表示：\n${goodDesignJson}`])
-        .client,
+      visionClient: visionScript([
+        `抱歉，我无法直接绘制图像，但可以用网格表示：\n${goodDesignJson}`,
+      ]).client,
     });
     const result = await provider.generate(request);
     expect(result.status).toBe('succeeded');

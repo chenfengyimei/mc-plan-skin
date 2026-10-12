@@ -307,9 +307,7 @@ export function applyRowPatches(
  * category 字段；原生 AbortSignal 超时表现为 TimeoutError。业务层只认
  * 标准 ProviderErrorCode，不解析任何厂商错误文本。
  */
-export function classifyClientError(
-  error: unknown,
-): 'rate_limited' | 'timeout' | 'unavailable' {
+export function classifyClientError(error: unknown): 'rate_limited' | 'timeout' | 'unavailable' {
   if (error instanceof Error) {
     const category = (error as { category?: unknown }).category;
     if (

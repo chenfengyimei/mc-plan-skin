@@ -1,8 +1,4 @@
-import {
-  enrichSkinDesignDraft,
-  renderSkinDesign,
-  type SkinDesign,
-} from './skin-design.js';
+import { enrichSkinDesignDraft, renderSkinDesign, type SkinDesign } from './skin-design.js';
 import type { ProviderGenerationRequest, ProviderGenerationResult } from './index.js';
 import {
   applyRowPatches,

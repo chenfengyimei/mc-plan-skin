@@ -41,7 +41,12 @@ export class OpenAiCompatVisionClient implements VisionClient {
     image: Uint8Array;
     imageMediaType?: string;
     timeoutMs?: number;
-  }): Promise<{ content: string; providerCallId: string; inputUnits: number; outputUnits: number }> {
+  }): Promise<{
+    content: string;
+    providerCallId: string;
+    inputUnits: number;
+    outputUnits: number;
+  }> {
     const timeoutMs = options.timeoutMs ?? this.options.defaultTimeoutMs ?? 30_000;
     const mediaType = options.imageMediaType ?? 'image/png';
     const response = await fetch(`${this.options.baseUrl.replace(/\/$/, '')}/chat/completions`, {
@@ -110,7 +115,12 @@ export class FixedVisionClient implements VisionClient {
     image: Uint8Array;
     imageMediaType?: string;
     timeoutMs?: number;
-  }): Promise<{ content: string; providerCallId: string; inputUnits: number; outputUnits: number }> {
+  }): Promise<{
+    content: string;
+    providerCallId: string;
+    inputUnits: number;
+    outputUnits: number;
+  }> {
     if (!this.#cache) {
       this.#cache = await readFile(this.#path, 'utf8');
     }

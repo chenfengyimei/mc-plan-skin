@@ -42,11 +42,7 @@ export class OpenAiCompatImageClient implements ImageClient {
     },
   ) {}
 
-  async generate(options: {
-    prompt: string;
-    size?: string;
-    timeoutMs?: number;
-  }): Promise<{
+  async generate(options: { prompt: string; size?: string; timeoutMs?: number }): Promise<{
     image: Uint8Array;
     providerCallId: string;
     inputUnits: number;

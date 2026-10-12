@@ -186,11 +186,12 @@ test.describe('Standalone image 模式全链冒烟（固定概念图 + 固定蓝
     await page.screenshot({ path: `${SHOT_DIR}/image-01-welcome.png`, fullPage: true });
 
     await page.getByLabel('皮肤描述').fill('来自冻原的雪地探险家，蓝色围巾');
+    // Provider 模式提示在创建卡片上明确标注“真实图像生成”
+    await expect(page.getByText('真实图像生成已启用')).toBeVisible();
     await page.getByRole('button', { name: '开始创作' }).click();
     await expect(page.getByTestId('conversation-state')).toContainText('状态：active', {
       timeout: 20_000,
     });
-    await expect(page.getByText('真实图像生成已启用')).toBeVisible();
     await page.screenshot({ path: `${SHOT_DIR}/image-02-workbench.png`, fullPage: true });
 
     // 两跳管线（固定概念图 → 固定蓝图 → 确定性渲染）产出的候选同样走全量校验

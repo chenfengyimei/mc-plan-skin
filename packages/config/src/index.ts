@@ -208,7 +208,11 @@ export const workerConfigSchema = baseConfigSchema
           value.SKIN_LLM_BASE_URL && value.SKIN_LLM_API_KEY && value.SKIN_LLM_MODEL,
         );
         if (!visionComplete && !llmComplete) {
-          for (const field of ['SKIN_VISION_BASE_URL', 'SKIN_VISION_API_KEY', 'SKIN_VISION_MODEL'] as const) {
+          for (const field of [
+            'SKIN_VISION_BASE_URL',
+            'SKIN_VISION_API_KEY',
+            'SKIN_VISION_MODEL',
+          ] as const) {
             ctx.addIssue({
               code: 'custom',
               path: [field],
@@ -303,7 +307,8 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     throw new ConfigError(toIssues(parsed.error));
   }
   const value = parsed.data;
-  const channel = (explicit: string | undefined, fallback: string | undefined): string => explicit ?? fallback ?? '';
+  const channel = (explicit: string | undefined, fallback: string | undefined): string =>
+    explicit ?? fallback ?? '';
   return {
     runMode: value.SKIN_RUN_MODE,
     env: value.SKIN_ENV,
@@ -338,8 +343,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
           }
         : null,
     visionTimeoutMs: value.SKIN_VISION_TIMEOUT_MS ?? value.SKIN_LLM_TIMEOUT_MS,
-    visionReasoningEffort:
-      value.SKIN_VISION_REASONING_EFFORT ?? value.SKIN_LLM_REASONING_EFFORT,
+    visionReasoningEffort: value.SKIN_VISION_REASONING_EFFORT ?? value.SKIN_LLM_REASONING_EFFORT,
     visionFixturePath: value.SKIN_VISION_FIXTURE_PATH,
     vision:
       value.SKIN_PROVIDER === 'image'

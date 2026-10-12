@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { LlmClientError } from '../src/llm-structured-provider.js';
+import type { LlmClientError } from '../src/llm-structured-provider.js';
 import { FixedVisionClient, OpenAiCompatVisionClient } from '../src/vision-client.js';
 
 const IMAGE = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2]);
@@ -32,7 +32,10 @@ afterEach(() => {
 
 describe('OpenAiCompatVisionClient', () => {
   it('以 OpenAI 兼容消息体携带文本与图像内容段', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => okResponse()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => okResponse()),
+    );
     const client = new OpenAiCompatVisionClient({
       baseUrl: 'https://llm.example.invalid/v1',
       apiKey: 'test-key',
@@ -56,10 +59,10 @@ describe('OpenAiCompatVisionClient', () => {
     const messages = body['messages'] as Array<Record<string, unknown>>;
     expect(messages).toHaveLength(2);
     expect(messages[0]).toMatchObject({ role: 'system', content: '系统提示' });
-    const content = messages[1]['content'] as Array<Record<string, unknown>>;
+    const content = messages[1]!['content'] as Array<Record<string, unknown>>;
     expect(content[0]).toMatchObject({ type: 'text', text: '读取概念图并输出蓝图' });
-    expect(content[1]['type']).toBe('image_url');
-    const imageUrl = (content[1]['image_url'] as { url: string }).url;
+    expect(content[1]!['type']).toBe('image_url');
+    const imageUrl = (content[1]!['image_url'] as { url: string }).url;
     expect(imageUrl.startsWith('data:image/png;base64,')).toBe(true);
   });
 
@@ -75,15 +78,15 @@ describe('OpenAiCompatVisionClient', () => {
         model: 'vision-model-y',
       });
     };
-    await expect(
-      make(429).extract({ system: 's', user: 'u', image: IMAGE }),
-    ).rejects.toMatchObject({ category: 'rate_limited' } satisfies Partial<LlmClientError>);
-    await expect(
-      make(408).extract({ system: 's', user: 'u', image: IMAGE }),
-    ).rejects.toMatchObject({ category: 'timeout' } satisfies Partial<LlmClientError>);
-    await expect(
-      make(401).extract({ system: 's', user: 'u', image: IMAGE }),
-    ).rejects.toMatchObject({ category: 'unavailable' } satisfies Partial<LlmClientError>);
+    await expect(make(429).extract({ system: 's', user: 'u', image: IMAGE })).rejects.toMatchObject(
+      { category: 'rate_limited' } satisfies Partial<LlmClientError>,
+    );
+    await expect(make(408).extract({ system: 's', user: 'u', image: IMAGE })).rejects.toMatchObject(
+      { category: 'timeout' } satisfies Partial<LlmClientError>,
+    );
+    await expect(make(401).extract({ system: 's', user: 'u', image: IMAGE })).rejects.toMatchObject(
+      { category: 'unavailable' } satisfies Partial<LlmClientError>,
+    );
   });
 });
 
