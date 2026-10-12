@@ -27,8 +27,15 @@ async function readConversationId(page: import('@playwright/test').Page): Promis
  * Standalone 纵向链路（自包含 Fake Provider 栈，公共契约 0.1.0-alpha.1 端点）：
  * 创建 → 渲染 → 3D 候选预览 → 候选对比 → 刷新恢复（详情+消息） → 确认 → 公共端点下载 → 删除。
  * 桌面与移动两个视口各覆盖一次完整流程；截图存 SKIN_E2E_SHOT_DIR（默认 test-results/shots）。
+ *
+ * SKIN_E2E_PROVIDER=image 时整栈切换为 image-concept 模式（固定概念图 + 固定蓝图
+ * fixture 全离线），fake 全量流程跳过，由文末的 image 模式全链冒烟覆盖。
  */
+const imageMode = process.env.SKIN_E2E_PROVIDER === 'image';
+
 test.describe('Standalone 桌面全流程', () => {
+  test.skip(imageMode, 'image 模式运行时由独立的 image 冒烟覆盖');
+
   test('创建→调整→对比→预览→刷新恢复→确认→下载→删除', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'MC Plan Skin' })).toBeVisible();
@@ -166,7 +173,78 @@ test.describe('Standalone 桌面全流程', () => {
   });
 });
 
+test.describe('Standalone image 模式全链冒烟（固定概念图 + 固定蓝图 fixture，全离线）', () => {
+  test.skip(!imageMode, '仅 SKIN_E2E_PROVIDER=image 运行');
+
+  test('image 徽标→创建→两跳渲染→3D 预览→确认→下载→删除', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'MC Plan Skin' })).toBeVisible();
+    await expect(page.locator('.badge-ok')).toHaveText('正常', { timeout: 30_000 });
+
+    // Web 徽标与提示明确区分“真实图像生成”模式
+    await expect(page.locator('.provider-chip.provider-image')).toContainText('真实图像生成');
+    await page.screenshot({ path: `${SHOT_DIR}/image-01-welcome.png`, fullPage: true });
+
+    await page.getByLabel('皮肤描述').fill('来自冻原的雪地探险家，蓝色围巾');
+    await page.getByRole('button', { name: '开始创作' }).click();
+    await expect(page.getByTestId('conversation-state')).toContainText('状态：active', {
+      timeout: 20_000,
+    });
+    await expect(page.getByText('真实图像生成已启用')).toBeVisible();
+    await page.screenshot({ path: `${SHOT_DIR}/image-02-workbench.png`, fullPage: true });
+
+    // 两跳管线（固定概念图 → 固定蓝图 → 确定性渲染）产出的候选同样走全量校验
+    await page.getByRole('button', { name: /请求(真实)?渲染/ }).click();
+    await expect(page.getByTestId('render-0')).toHaveClass(/render-succeeded/, {
+      timeout: 60_000,
+    });
+
+    const preview = page.getByTestId('skin-preview-3d').first();
+    await expect(preview).toBeVisible({ timeout: 30_000 });
+    await preview.scrollIntoViewIfNeeded();
+    await expect(preview).toHaveAttribute('data-animation', 'walk');
+    await expect(page.locator('.workspace-mode.provider-image')).toHaveText('IMAGE PIPELINE');
+    await page.screenshot({ path: `${SHOT_DIR}/image-03-preview.png`, fullPage: true });
+
+    await page.getByLabel('成品标题').fill('Concept Bridge Explorer');
+    const confirmButton = page.locator('[data-testid^="confirm-"]').first();
+    await confirmButton.click();
+    await expect(page.locator('.finalize-status')).toHaveClass(/finalize-succeeded/, {
+      timeout: 60_000,
+    });
+
+    // 公共下载端点：image 模式候选与 fake/llm 同一业务链路（合法 64×64 PNG）
+    const downloadUrl = await page.getByTestId('download-final').getAttribute('href');
+    expect(downloadUrl).toContain('/api/v1/conversations/');
+    const probe = await page.request.get(downloadUrl as string);
+    expect(probe.status()).toBe(200);
+    expect(probe.headers()['content-type']).toContain('image/png');
+    assertPng64(await probe.body());
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('download-final').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.png$/);
+    await page.screenshot({ path: `${SHOT_DIR}/image-04-finalized.png`, fullPage: true });
+
+    // 删除级联与不复活语义与 fake 模式一致
+    const conversationId = await readConversationId(page);
+    await page.getByTestId('delete-conversation').click();
+    await expect(page.getByText('会话与全部候选、成品数据已删除。')).toBeVisible();
+    const deletedDetail = await page.request.get(`/api/v1/conversations/${conversationId}`);
+    expect(deletedDetail.status()).toBe(404);
+    const deletedDownload = await page.request.get(downloadUrl as string);
+    expect(deletedDownload.status()).toBe(404);
+
+    await page.reload();
+    await expect(page.getByTestId('conversation-state')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '开始创作' })).toBeVisible();
+  });
+});
+
 test.describe('Standalone 移动端全流程', () => {
+  test.skip(imageMode, 'image 模式运行时由独立的 image 冒烟覆盖');
+
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
   test('移动端创建→渲染→预览→确认→下载→删除', async ({ page }) => {

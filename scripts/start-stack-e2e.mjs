@@ -17,6 +17,28 @@ import { RedisContainer } from '@testcontainers/redis';
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const apiPort = process.env.SKIN_E2E_API_PORT ?? '4000';
+// 自包含 Provider 模式：默认 fake；SKIN_E2E_PROVIDER=image 时以固定概念图 +
+// 固定蓝图 fixture 走完整 image-concept 两跳管线（全离线，测试必须不依赖任何凭据）。
+const provider = process.env.SKIN_E2E_PROVIDER === 'image' ? 'image' : 'fake';
+const providerEnv =
+  provider === 'image'
+    ? {
+        SKIN_IMAGE_FIXTURE_PATH: join(
+          rootDir,
+          'packages',
+          'test-fixtures',
+          'assets',
+          'concept-explorer.png',
+        ),
+        SKIN_VISION_FIXTURE_PATH: join(
+          rootDir,
+          'packages',
+          'test-fixtures',
+          'assets',
+          'concept-blueprint.json',
+        ),
+      }
+    : {};
 
 const postgres = await new PostgreSqlContainer('postgres:17-alpine')
   .withDatabase('mc_plan_skin_e2e')
@@ -50,13 +72,15 @@ const sharedEnv = {
   SKIN_RUN_MODE: 'standalone',
   SKIN_ENV: 'test',
   // 测试必须完全离线：显式覆盖 apps/worker/.env 中可能存在的本地 LLM 演示配置。
-  SKIN_PROVIDER: 'fake',
+  // image 模式同样离线——两跳均注入固定 fixture，不触碰任何真实凭据。
+  SKIN_PROVIDER: provider,
   SKIN_LOG_LEVEL: 'warn',
   SKIN_DATABASE_URL: databaseUrl,
   SKIN_REDIS_URL: redisUrl,
   SKIN_API_HOST: '127.0.0.1',
   SKIN_API_PORT: apiPort,
   SKIN_CANDIDATE_STORAGE_ROOT: join(rootDir, 'data', `e2e-candidates-${apiPort}`),
+  ...providerEnv,
 };
 
 const children = [

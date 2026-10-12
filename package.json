@@ -10,6 +10,7 @@
   "scripts": {
     "start:demo": "node scripts/start-demo.mjs --provider=fake",
     "start:real": "node scripts/start-demo.mjs --provider=llm",
+    "start:image": "node scripts/start-demo.mjs --provider=image",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -19,6 +20,7 @@
     "test:unit": "pnpm -r --if-present test:unit",
     "test:integration": "pnpm -r --if-present test:integration",
     "test:e2e": "playwright test",
+    "test:e2e:image": "SKIN_PROVIDER=image SKIN_E2E_PROVIDER=image playwright test",
     "contract:gen": "pnpm --filter @mc-plan/skin-contracts gen",
     "contract:check": "node scripts/verify-contracts.mjs",
     "fixtures:build": "pnpm --filter @mc-plan/skin-test-fixtures build",
@@ -28,7 +30,7 @@
     "migration:validate": "pnpm --filter @mc-plan/skin-db migration:validate",
     "migration:deploy": "pnpm --filter @mc-plan/skin-db migration:deploy",
     "check": "pnpm format:check && pnpm build && pnpm lint && pnpm typecheck && pnpm test:unit && pnpm contract:check && pnpm fixtures:validate",
-    "check:full": "pnpm check && pnpm test:integration && pnpm test:e2e"
+    "check:full": "pnpm check && pnpm test:integration && pnpm test:e2e && pnpm test:e2e:image"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

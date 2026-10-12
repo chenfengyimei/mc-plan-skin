@@ -13,12 +13,29 @@ import { RedisContainer } from '@testcontainers/redis';
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const providerArgument = process.argv.find((argument) => argument.startsWith('--provider='));
 const provider = providerArgument?.split('=', 2)[1] ?? 'fake';
-if (!['fake', 'llm'].includes(provider)) {
-  console.error('[local] --provider 只支持 fake 或 llm');
+if (!['fake', 'llm', 'image'].includes(provider)) {
+  console.error('[local] --provider 只支持 fake、llm 或 image');
   process.exit(1);
 }
 
-console.log(`[local] 启动模式：${provider === 'llm' ? '真实 LLM Provider' : '固定 Fake fixture'}`);
+console.log(
+  `[local] 启动模式：${provider === 'llm' ? '真实 LLM Provider' : provider === 'image' ? '真实图像→视觉提取管线（固定概念图 + 真实视觉提取）' : '固定 Fake fixture'}`,
+);
+
+// image 模式注入固定概念图 fixture（显式演示/测试注入点）：
+// 图像跳固定、视觉跳走真实远程配置（apps/worker/.env 的 SKIN_LLM_*/SKIN_VISION_*）。
+const imageFixtureEnv =
+  provider === 'image'
+    ? {
+        SKIN_IMAGE_FIXTURE_PATH: join(
+          rootDir,
+          'packages',
+          'test-fixtures',
+          'assets',
+          'concept-explorer.png',
+        ),
+      }
+    : {};
 console.log('[demo] 启动 PostgreSQL 与 Redis 容器…');
 const postgres = await new PostgreSqlContainer('postgres:17-alpine')
   .withDatabase('skin')
@@ -49,7 +66,7 @@ const sharedEnv = {
   ...process.env,
   SKIN_RUN_MODE: 'standalone',
   SKIN_ENV: 'development',
-  // 启动入口必须显式决定 Provider：真实模式缺少 LLM 配置时由 worker 配置校验直接失败，
+  // 启动入口必须显式决定 Provider：真实模式缺少连接配置时由 worker 配置校验直接失败，
   // 绝不静默降级为会重复返回 fixture 的 Fake Provider。
   SKIN_PROVIDER: provider,
   SKIN_LOG_LEVEL: 'info',
@@ -59,6 +76,7 @@ const sharedEnv = {
   SKIN_API_PORT: '4000',
   SKIN_CANDIDATE_STORAGE_ROOT: join(rootDir, 'data', 'demo-candidates'),
   SKIN_OFFICIAL_CORE_BASE_URL: '',
+  ...imageFixtureEnv,
 };
 
 // 真实模式的 SKIN_LLM_* 由 apps/worker/.env（gitignored）提供；dotenv 不覆盖这里显式
