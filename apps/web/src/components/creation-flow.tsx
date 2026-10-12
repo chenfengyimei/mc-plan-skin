@@ -258,6 +258,25 @@ function MessageHistory({ messages }: { messages: ConversationMessage[] }) {
   );
 }
 
+/** 顶栏/工作台 Provider 模式文案（真实文本 / 真实图像 / 固定样例）。 */
+const PROVIDER_NOTICE: Record<ProviderMode, { icon: string; title: string; body: string }> = {
+  real: {
+    icon: '✦',
+    title: '真实模型生成已启用',
+    body: '提交后会调用已配置的远程模型，为这段描述重新设计像素蓝图。',
+  },
+  image: {
+    icon: '✧',
+    title: '真实图像生成已启用',
+    body: '提交后先按描述生成角色概念图，再由视觉模型读取概念图输出逐像素蓝图。',
+  },
+  demo: {
+    icon: '◇',
+    title: '当前是固定样例演示',
+    body: '这里不会产生新皮肤；每种手臂模型只返回固定测试素材。请用 pnpm start:real 启动真实流程。',
+  },
+};
+
 /** Standalone 创作工作台：创建 → 真实/演示 Provider 渲染 → 3D 检查 → 确认。 */
 export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
   const [conversation, setConversation] = useState<ConversationInfo | null>(null);
@@ -650,17 +669,11 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
 
             <div className={`provider-notice provider-notice-${providerMode}`}>
               <span className="notice-icon" aria-hidden="true">
-                {providerMode === 'real' ? '✦' : '◇'}
+                {PROVIDER_NOTICE[providerMode].icon}
               </span>
               <div>
-                <strong>
-                  {providerMode === 'real' ? '真实模型生成已启用' : '当前是固定样例演示'}
-                </strong>
-                <p>
-                  {providerMode === 'real'
-                    ? '提交后会调用已配置的远程模型，为这段描述重新设计像素蓝图。'
-                    : '这里不会产生新皮肤；每种手臂模型只返回固定测试素材。请用 pnpm start:real 启动真实流程。'}
-                </p>
+                <strong>{PROVIDER_NOTICE[providerMode].title}</strong>
+                <p>{PROVIDER_NOTICE[providerMode].body}</p>
               </div>
             </div>
 
@@ -875,7 +888,9 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
               <p className="field-footnote">
                 {providerMode === 'real'
                   ? '每次点击都会调用远程模型并消耗一次渲染机会。'
-                  : '演示模式只验证流程，不会根据描述生成新内容。'}
+                  : providerMode === 'image'
+                    ? '每次点击都会调用远程图像与视觉模型并消耗一次渲染机会。'
+                    : '演示模式只验证流程，不会根据描述生成新内容。'}
               </p>
             </section>
 
@@ -940,7 +955,11 @@ export function CreationFlow({ providerMode }: { providerMode: ProviderMode }) {
               </div>
               <div className={`workspace-mode provider-${providerMode}`}>
                 <span />
-                {providerMode === 'real' ? 'REAL GENERATION' : 'FIXTURE DEMO'}
+                {providerMode === 'real'
+                  ? 'REAL GENERATION'
+                  : providerMode === 'image'
+                    ? 'IMAGE PIPELINE'
+                    : 'FIXTURE DEMO'}
               </div>
             </header>
 

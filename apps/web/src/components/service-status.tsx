@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 
 type ServiceState = 'checking' | 'healthy' | 'unreachable';
 
-export type ProviderMode = 'real' | 'demo';
+export type ProviderMode = 'real' | 'demo' | 'image';
+
+const PROVIDER_CHIP: Record<ProviderMode, { icon: string; label: string }> = {
+  real: { icon: '✦', label: '真实模型' },
+  image: { icon: '✧', label: '真实图像生成' },
+  demo: { icon: '◇', label: '固定样例' },
+};
 
 export function ServiceStatus({ providerMode }: { providerMode: ProviderMode }) {
   const [state, setState] = useState<ServiceState>('checking');
@@ -50,10 +56,10 @@ export function ServiceStatus({ providerMode }: { providerMode: ProviderMode }) 
         </span>
       </div>
       <div className={`provider-chip provider-${providerMode}`}>
-        <span aria-hidden="true">{providerMode === 'real' ? '✦' : '◇'}</span>
+        <span aria-hidden="true">{PROVIDER_CHIP[providerMode].icon}</span>
         <span>
           <small>Generation</small>
-          <strong>{providerMode === 'real' ? '真实模型' : '固定样例'}</strong>
+          <strong>{PROVIDER_CHIP[providerMode].label}</strong>
         </span>
       </div>
     </div>

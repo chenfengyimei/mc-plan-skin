@@ -4,7 +4,12 @@ import { ServiceStatus } from '../components/service-status';
 export const dynamic = 'force-dynamic';
 
 export default function HomePage() {
-  const providerMode = process.env.SKIN_PROVIDER === 'llm' ? 'real' : 'demo';
+  const providerMode =
+    process.env.SKIN_PROVIDER === 'llm'
+      ? 'real'
+      : process.env.SKIN_PROVIDER === 'image'
+        ? 'image'
+        : 'demo';
 
   return (
     <main className="app-shell">

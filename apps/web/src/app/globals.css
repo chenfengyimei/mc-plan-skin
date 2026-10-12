@@ -268,6 +268,15 @@ main.app-shell {
   color: var(--amber);
 }
 
+.provider-image {
+  border-color: rgb(98 213 255 / 30%);
+  background: rgb(98 213 255 / 8%);
+}
+
+.provider-image strong {
+  color: var(--cyan);
+}
+
 /* ---------- Hero ---------- */
 
 .hero {
@@ -631,6 +640,11 @@ main.app-shell {
   background: rgb(255 184 107 / 7%);
 }
 
+.provider-notice-image {
+  border: 1px solid rgb(98 213 255 / 28%);
+  background: rgb(98 213 255 / 7%);
+}
+
 .provider-notice .notice-icon {
   font-size: 1rem;
   line-height: 1.4;
@@ -642,6 +656,10 @@ main.app-shell {
 
 .provider-notice-demo .notice-icon {
   color: var(--amber);
+}
+
+.provider-notice-image .notice-icon {
+  color: var(--cyan);
 }
 
 .provider-notice strong {
@@ -1541,6 +1559,11 @@ input:focus-visible {
 .workspace-mode.provider-demo {
   border-color: rgb(255 184 107 / 35%);
   color: var(--amber);
+}
+
+.workspace-mode.provider-image {
+  border-color: rgb(98 213 255 / 35%);
+  color: var(--cyan);
 }
 
 .candidate-list {
